@@ -32,8 +32,8 @@ To set up the project, follow these steps:
 
 2. **Set up the virtual environment:**
    ```bash
-   python3 -m venv safety-training
-   source safety-training/bin/activate
+   python3 -m venv training
+   source training/bin/activate
    ```
 
 3. **Install the required dependencies:**
