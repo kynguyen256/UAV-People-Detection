@@ -1,3 +1,10 @@
+# to Do
+- Conversation about Model Selection
+- Data Organization on Roboflow
+- GCP or AWS Setup
+- Making the Enviorment
+
+
 
 # UAV-People-Detection
 
