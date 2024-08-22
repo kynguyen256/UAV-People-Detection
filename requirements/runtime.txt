@@ -5,4 +5,5 @@ six
 terminaltables
 fairscale
 scipy
-yapf
+pika
+redis
