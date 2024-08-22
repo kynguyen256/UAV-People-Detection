@@ -7,6 +7,7 @@ class DatasetEnum(Enum):
     IMAGENET_DET = 'imagenet_det'
     IMAGENET_VID = 'imagenet_vid'
     COCO = 'coco'
+    UAV_PEOPLE = 'uav_people'
     LVIS = 'lvis'
     WIDER_FACE = 'wider_face'
     CITYSCAPES = 'cityscapes'
@@ -93,6 +94,22 @@ def coco_classes():
         'scissors', 'teddy_bear', 'hair_drier', 'toothbrush'
     ]
 
+def uav_people_classes():
+    return [
+        'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train',
+        'truck', 'boat', 'traffic_light', 'fire_hydrant', 'stop_sign',
+        'parking_meter', 'bench', 'bird', 'cat', 'dog', 'horse', 'sheep',
+        'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella',
+        'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard',
+        'sports_ball', 'kite', 'baseball_bat', 'baseball_glove', 'skateboard',
+        'surfboard', 'tennis_racket', 'bottle', 'wine_glass', 'cup', 'fork',
+        'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange',
+        'broccoli', 'carrot', 'hot_dog', 'pizza', 'donut', 'cake', 'chair',
+        'couch', 'potted_plant', 'bed', 'dining_table', 'toilet', 'tv',
+        'laptop', 'mouse', 'remote', 'keyboard', 'cell_phone', 'microwave',
+        'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase',
+        'scissors', 'teddy_bear', 'hair_drier', 'toothbrush'
+    ]
 
 def cityscapes_classes():
     return [
@@ -559,6 +576,7 @@ dataset_aliases = {
     DatasetEnum.IMAGENET_DET: ['det', 'imagenet_det', 'ilsvrc_det'],
     DatasetEnum.IMAGENET_VID: ['vid', 'imagenet_vid', 'ilsvrc_vid'],
     DatasetEnum.COCO: ['coco', 'mscoco', 'ms_coco'],
+    DatasetEnum.UAV_PEOPLE: ['uav_people', 'UAV_People', 'UAV-People'],
     DatasetEnum.LVIS: ['lvis'],
     DatasetEnum.WIDER_FACE: ['WIDERFaceDataset', 'wider_face', 'WIDERFace'],
     DatasetEnum.CITYSCAPES: ['cityscapes'],
