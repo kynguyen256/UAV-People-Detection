@@ -1,5 +1,5 @@
 _base_ = [
-    '../_base_/datasets/coco_detection.py',
+    '../_base_/datasets/uav_people_detetction.py',
     '../_base_/default_runtime.py'
 ]
 
