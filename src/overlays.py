@@ -58,7 +58,6 @@ def overlay_bounding_boxes(image_dir, bbox_data, image_id_to_file, output_dir, c
         # Save the output image
         output_path = output_dir / file_name
         cv2.imwrite(str(output_path), image)
-        print(f"Saved annotated image to: {output_path}")
 
 # Example usage
 
