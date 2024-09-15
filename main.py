@@ -1,4 +1,4 @@
-from src/download_data import download
+from src.download_data import download
 
 def main():
 
