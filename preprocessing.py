@@ -1,3 +1,5 @@
+from src.processing import check_coco_data
+
 import os
 import json
 import glob
