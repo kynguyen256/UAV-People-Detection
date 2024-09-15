@@ -1,6 +1,7 @@
 from src.processing import check_coco_data
 from src.download_data import download_data
 from src.visualize import randomDisplay
+from src.overlays import createOverlays
 
 import os
 import json
@@ -16,6 +17,9 @@ def main():
 
       # Randomly display some images 
       randomDisplay()
+
+      # Overlay bounding boxes
+      createOverlays()
 
 if __name__ == "__main__":
     main()
