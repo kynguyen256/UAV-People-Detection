@@ -1,115 +1,87 @@
 import json
-import cv2
+import os
 from pathlib import Path
 
 def load_annotations(file_name):
     """
     Load annotations from a COCO JSON file.
-    
-    Parameters:
-    - file_name: Path to the annotation file.
-    
-    Returns:
-    - The loaded annotations as a dictionary.
     """
     with open(file_name, 'r') as file:
         return json.load(file)
 
-def print_class_names(annotations):
+def save_annotations(annotations, file_name):
     """
-    Print out the class names from the annotations.
-    
-    Parameters:
-    - annotations: Dictionary containing the loaded annotations.
+    Save annotations to a COCO JSON file.
     """
+    with open(file_name, 'w') as file:
+        json.dump(annotations, file)
+
+def filter_humans_annotations(annotations):
+    """
+    Filter annotations to keep only the 'humans' class.
+    """
+    # Find the 'humans' category_id
     categories = annotations['categories']
-    class_names = [category['name'] for category in categories]
-    print("Class names:", class_names)
-
-def overlay_bounding_boxes(image_dir, bbox_data, image_id_to_file, output_dir, color=(0, 255, 0), thickness=2):
-    """
-    Overlay bounding boxes on images and save the result to the output directory.
+    humans_category = None
+    for category in categories:
+        if category['name'] == 'humans':
+            humans_category = category
+            break
     
-    Parameters:
-    - image_dir: Path to the directory containing images.
-    - bbox_data: Dictionary with image IDs as keys and lists of bounding boxes as values.
-    - image_id_to_file: Dictionary mapping image IDs to file names.
-    - output_dir: Path to the directory where the output images will be saved.
-    - color: Bounding box color as a BGR tuple (default: green).
-    - thickness: Bounding box line thickness (default: 2).
-    """
-    # Ensure output directory exists
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if humans_category is None:
+        print("Error: 'humans' class not found in categories.")
+        return None
+    
+    humans_category_id = humans_category['id']
+    
+    # Filter annotations to keep only those with 'humans' category_id
+    filtered_annotations = [ann for ann in annotations['annotations'] if ann['category_id'] == humans_category_id]
+    
+    # Update the 'categories' section to keep only 'humans' category
+    annotations['categories'] = [humans_category]
+    
+    # Update 'annotations' section with filtered annotations
+    annotations['annotations'] = filtered_annotations
+    
+    # Re-map category_id to 1 for consistency
+    new_category_id = 1
+    annotations['categories'][0]['id'] = new_category_id
+    for ann in annotations['annotations']:
+        ann['category_id'] = new_category_id
+    
+    return annotations
 
-    image_dir = Path(image_dir)
-
-    for image_id, bboxes in bbox_data.items():
-        # Get the image file name
-        if image_id not in image_id_to_file:
-            print(f"Image ID {image_id} not found in mapping.")
+def process_dataset():
+    # Define dataset splits
+    splits = ['train', 'valid', 'test']
+    for split in splits:
+        input_annotation_path = f'data/{split}/_annotations.coco.json'
+        output_annotation_path = f'data/{split}/{split}_annotations.coco.json'
+        
+        # Load annotations
+        annotations = load_annotations(input_annotation_path)
+        
+        # Print class names before filtering
+        categories = annotations['categories']
+        class_names = [category['name'] for category in categories]
+        print(f"Class names in {split} set before filtering:")
+        print("Class names:", class_names)
+        
+        # Filter annotations to keep only 'humans' class
+        filtered_annotations = filter_humans_annotations(annotations)
+        if filtered_annotations is None:
+            print(f"Skipping {split} set due to missing 'humans' class.")
             continue
+        
+        # Print class names after filtering
+        categories = filtered_annotations['categories']
+        class_names = [category['name'] for category in categories]
+        print(f"Class names in {split} set after filtering:")
+        print("Class names:", class_names)
+        
+        # Save updated annotations with new filenames
+        save_annotations(filtered_annotations, output_annotation_path)
+        print(f"Saved filtered annotations to {output_annotation_path}\n")
 
-        file_name = image_id_to_file[image_id]
-        image_path = image_dir / file_name
-
-        # Load the image
-        image = cv2.imread(str(image_path))
-        if image is None:
-            print(f"Image not found: {image_path}")
-            continue
-
-        # Draw bounding boxes
-        for bbox in bboxes:
-            x, y, width, height = map(int, bbox)
-            top_left = (x, y)
-            bottom_right = (x + width, y + height)
-            cv2.rectangle(image, top_left, bottom_right, color, thickness)
-
-        # Save the output image
-        output_path = output_dir / file_name
-        cv2.imwrite(str(output_path), image)
-
-# Example usage
-
-def createOverlays():
-    # Define file paths
-    file_paths = {
-        'test': 'data/test/_annotations.coco.json',
-        'train': 'data/train/_annotations.coco.json',
-        'valid': 'data/valid/_annotations.coco.json'
-    }
-
-    # Load the annotations
-    annotations = {key: load_annotations(path) for key, path in file_paths.items()}
-
-    # Print out the class names for each dataset split
-    for split in ['train', 'valid', 'test']:
-        print(f"Class names in {split} set:")
-        print_class_names(annotations[split])
-
-    # Extract images and annotations for the 'valid' set (you can change this to 'train' or 'test')
-    images = annotations['valid']['images']
-    annotations_data = annotations['valid']['annotations']
-
-    # Create a mapping from image IDs to image file names
-    image_id_to_file = {img['id']: img['file_name'] for img in images}
-
-    # Extract bounding boxes and associated image IDs
-    bbox_data = {}
-    for ann in annotations_data:
-        image_id = ann['image_id']
-        bbox = ann['bbox']  # [x, y, width, height]
-        if image_id not in bbox_data:
-            bbox_data[image_id] = []
-        bbox_data[image_id].append(bbox)
-
-    # Specify image and output directories
-    image_dir = 'data/valid'
-    output_dir = 'data/annotated'
-
-    # Overlay bounding boxes and save images
-    overlay_bounding_boxes(image_dir, bbox_data, image_id_to_file, output_dir, color=(0, 255, 0), thickness=2)
-
-# Call the createOverlays function
-createOverlays()
+# Run the process_dataset function
+process_dataset()
