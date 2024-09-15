@@ -37,6 +37,16 @@ def check_coco_data(root_dir):
     Raises:
     - ValueError: If the directory does not exist or no JSON files are found.
     """
+
+    # Directories to check
+    directories = ['data/train', 'data/valid', 'data/test']
+
+    for directory in directories:
+        print(f"Checking directory: {directory}")
+        check_coco(directory)
+
+def check_coco(root_dir):
+    
     if not os.path.exists(root_dir):
         raise ValueError(f"Directory {root_dir} does not exist.")
     
@@ -62,4 +72,5 @@ def check_coco_data(root_dir):
             print(f" - {issue}")
     else:
         print("All files are valid and well-formatted.")
+        
 
