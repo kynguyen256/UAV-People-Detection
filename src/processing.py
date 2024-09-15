@@ -27,7 +27,7 @@ def verify_json(file_path):
         # If JSON is not properly formatted
         return False, f"JSON Decode Error: {e}"
 
-def check_coco_data(root_dir):
+def check_coco_data():
     """
     Checks all JSON files in a given directory (and its subdirectories) for validity.
     
