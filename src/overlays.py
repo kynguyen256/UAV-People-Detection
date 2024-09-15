@@ -15,6 +15,17 @@ def load_annotations(file_name):
     with open(file_name, 'r') as file:
         return json.load(file)
 
+def print_class_names(annotations):
+    """
+    Print out the class names from the annotations.
+    
+    Parameters:
+    - annotations: Dictionary containing the loaded annotations.
+    """
+    categories = annotations['categories']
+    class_names = [category['name'] for category in categories]
+    print("Class names:", class_names)
+
 def overlay_bounding_boxes(image_dir, bbox_data, image_id_to_file, output_dir, color=(0, 255, 0), thickness=2):
     """
     Overlay bounding boxes on images and save the result to the output directory.
@@ -72,7 +83,12 @@ def createOverlays():
     # Load the annotations
     annotations = {key: load_annotations(path) for key, path in file_paths.items()}
 
-    # Extract images and annotations
+    # Print out the class names for each dataset split
+    for split in ['train', 'valid', 'test']:
+        print(f"Class names in {split} set:")
+        print_class_names(annotations[split])
+
+    # Extract images and annotations for the 'valid' set (you can change this to 'train' or 'test')
     images = annotations['valid']['images']
     annotations_data = annotations['valid']['annotations']
 
@@ -89,9 +105,11 @@ def createOverlays():
         bbox_data[image_id].append(bbox)
 
     # Specify image and output directories
-    image_dir = '/content/UAV-People-Detection/data/valid'
-    output_dir = '/content/UAV-People-Detection/data/annotated'
+    image_dir = 'data/valid'
+    output_dir = 'data/annotated'
 
     # Overlay bounding boxes and save images
     overlay_bounding_boxes(image_dir, bbox_data, image_id_to_file, output_dir, color=(0, 255, 0), thickness=2)
 
+# Call the createOverlays function
+createOverlays()
