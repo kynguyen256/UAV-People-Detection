@@ -1,6 +1,6 @@
 import os
 
-def download_new_dataset():
+def download_data():
     # Create a data/ directory if it doesn't exist
     data_dir = "data"
     if not os.path.exists(data_dir):
