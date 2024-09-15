@@ -1,6 +1,6 @@
 import os 
 import glob
-
+import json 
 def verify_json(file_path):
     """
     Verifies if a given JSON file adheres to the COCO format.
