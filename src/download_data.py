@@ -32,4 +32,4 @@ def download_data():
         print("Dataset already exists with 'train', 'test', and 'valid' folders.")
 
 # Call the function to download the new dataset
-download_new_dataset()
+download_data()
