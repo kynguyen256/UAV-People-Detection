@@ -7,44 +7,6 @@ from torch.utils.data import DataLoader, Dataset
 from PIL import Image
 from src.detr import create_detr_model
 
-class COCOCustomDataset(Dataset):
-    def __init__(self, annotation_file, images_dir, processor):
-        self.processor = processor
-        with open(annotation_file, 'r') as f:
-            data = json.load(f)
-        self.image_files = []
-        self.bboxes = []
-        self.labels = []
-
-        # Map image IDs to filenames
-        id_to_filename = {img['id']: img['file_name'] for img in data['images']}
-        for ann in data['annotations']:
-            image_id = ann['image_id']
-            file_name = id_to_filename[image_id]
-            image_path = os.path.join(images_dir, file_name)
-            if not os.path.exists(image_path):
-                continue
-            
-            self.image_files.append(image_path)
-            bbox = ann['bbox']
-            self.bboxes.append(bbox)
-            self.labels.append(1)  # Single class
-
-    def __len__(self):
-        return len(self.image_files)
-
-    def __getitem__(self, idx):
-        image = Image.open(self.image_files[idx]).convert("RGB")
-        bbox = self.bboxes[idx]
-        label = self.labels[idx]
-        encoding = self.processor(images=image, annotations={"boxes": [bbox], "labels": [label]}, return_tensors="pt")
-        pixel_values = encoding['pixel_values'].squeeze()  # (3, height, width)
-        target = {
-            "boxes": encoding['labels']['boxes'],
-            "labels": encoding['labels']['labels']
-        }
-        return pixel_values, target
-
 def main():
     # Paths
     train_images_dir = 'data/train'
@@ -85,6 +47,45 @@ def main():
     # Save model
     torch.save(model.state_dict(), "detr_model.pth")
     print("Model saved as detr_model.pth")
+
+class COCOCustomDataset(Dataset):
+    def __init__(self, annotation_file, images_dir, processor):
+        self.processor = processor
+        with open(annotation_file, 'r') as f:
+            data = json.load(f)
+        self.image_files = []
+        self.bboxes = []
+        self.labels = []
+
+        # Map image IDs to filenames
+        id_to_filename = {img['id']: img['file_name'] for img in data['images']}
+        for ann in data['annotations']:
+            image_id = ann['image_id']
+            file_name = id_to_filename[image_id]
+            image_path = os.path.join(images_dir, file_name)
+            if not os.path.exists(image_path):
+                continue
+            
+            self.image_files.append(image_path)
+            bbox = ann['bbox']
+            self.bboxes.append(bbox)
+            self.labels.append(1)  # Single class
+
+    def __len__(self):
+        return len(self.image_files)
+
+    def __getitem__(self, idx):
+        image = Image.open(self.image_files[idx]).convert("RGB")
+        bbox = self.bboxes[idx]
+        label = self.labels[idx]
+        encoding = self.processor(images=image, annotations={"boxes": [bbox], "labels": [label]}, return_tensors="pt")
+        pixel_values = encoding['pixel_values'].squeeze()  # (3, height, width)
+        target = {
+            "boxes": encoding['labels']['boxes'],
+            "labels": encoding['labels']['labels']
+        }
+        return pixel_values, target
+
 
 if __name__ == '__main__':
     main()
