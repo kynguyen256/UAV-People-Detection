@@ -28,20 +28,6 @@ To set up the project locally, follow these steps:
    sudo apt install python3.8-venv
    pipx run nvitop
    ```
-
-### AWS ECR - Uploading Docker Images
-
-1. **Set Up AWS CLI:**
-   Ensure AWS CLI is installed on your machine.
-
-2. **Configure AWS CLI:**
-   Use `aws configure` to set up your credentials.
-
-3. **Authenticate Docker to ECR:**
-   ```bash
-   aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 521337707473.dkr.ecr.us-east-1.amazonaws.com
-   ```
-
 ### Clone Repo and Set Up Environment
 
 4. **Clone the repository and navigate into it:**
