@@ -2,94 +2,48 @@
 
 import os
 import json
-import numpy as np
-import tensorflow as tf
-from tensorflow.keras import optimizers
-from tensorflow.keras.applications.resnet50 import preprocess_input
-from tensorflow.keras.preprocessing.image import load_img, img_to_array
-from sklearn.model_selection import train_test_split
+import torch
+from torch.utils.data import DataLoader, Dataset
+from PIL import Image
+from src.detr import create_detr_model
 
-from src.model import create_model
+class COCOCustomDataset(Dataset):
+    def __init__(self, annotation_file, images_dir, processor):
+        self.processor = processor
+        with open(annotation_file, 'r') as f:
+            data = json.load(f)
+        self.image_files = []
+        self.bboxes = []
+        self.labels = []
 
-def load_annotations(annotation_file, images_dir):
-    """
-    Load annotations and prepare data.
-    
-    Parameters:
-    - annotation_file: Path to the COCO annotation JSON file.
-    - images_dir: Directory containing images.
-    
-    Returns:
-    - images: List of image file paths.
-    - bboxes: List of bounding boxes (normalized).
-    - labels: List of labels (1 for 'humans').
-    """
-    with open(annotation_file, 'r') as f:
-        data = json.load(f)
-    
-    # Mapping from image IDs to file names
-    id_to_filename = {img['id']: img['file_name'] for img in data['images']}
-    
-    # Collect images, bounding boxes, and labels
-    images = []
-    bboxes = []
-    labels = []
-    
-    for ann in data['annotations']:
-        image_id = ann['image_id']
-        bbox = ann['bbox']  # [x, y, width, height]
-        category_id = ann['category_id']
-        
-        # Get the file name
-        file_name = id_to_filename[image_id]
-        image_path = os.path.join(images_dir, file_name)
-        
-        # Skip if image doesn't exist
-        if not os.path.exists(image_path):
-            continue
-        
-        # Load image to get dimensions
-        img = load_img(image_path)
-        width, height = img.size
-        
-        # Normalize bounding box coordinates
-        x_min = bbox[0] / width
-        y_min = bbox[1] / height
-        x_max = (bbox[0] + bbox[2]) / width
-        y_max = (bbox[1] + bbox[3]) / height
-        bbox_normalized = [x_min, y_min, x_max, y_max]
-        
-        images.append(image_path)
-        bboxes.append(bbox_normalized)
-        labels.append(1)  # Since we have only one class
-    
-    return images, np.array(bboxes), np.array(labels)
+        # Map image IDs to filenames
+        id_to_filename = {img['id']: img['file_name'] for img in data['images']}
+        for ann in data['annotations']:
+            image_id = ann['image_id']
+            file_name = id_to_filename[image_id]
+            image_path = os.path.join(images_dir, file_name)
+            if not os.path.exists(image_path):
+                continue
+            
+            self.image_files.append(image_path)
+            bbox = ann['bbox']
+            self.bboxes.append(bbox)
+            self.labels.append(1)  # Single class
 
-def data_generator(images, bboxes, labels, batch_size=32, input_size=(224, 224)):
-    """
-    A generator that yields batches of images and labels.
-    """
-    while True:
-        for i in range(0, len(images), batch_size):
-            batch_images = []
-            batch_bboxes = []
-            batch_labels = []
-            
-            batch_files = images[i:i+batch_size]
-            batch_bboxes_values = bboxes[i:i+batch_size]
-            batch_labels_values = labels[i:i+batch_size]
-            
-            for img_path, bbox, label in zip(batch_files, batch_bboxes_values, batch_labels_values):
-                # Load and preprocess image
-                img = load_img(img_path, target_size=input_size)
-                img_array = img_to_array(img)
-                img_array = preprocess_input(img_array)
-                
-                batch_images.append(img_array)
-                batch_bboxes.append(bbox)
-                batch_labels.append(label)
-            
-            yield np.array(batch_images), {'bbox_output': np.array(batch_bboxes), 'class_output': np.array(batch_labels)}
+    def __len__(self):
+        return len(self.image_files)
+
+    def __getitem__(self, idx):
+        image = Image.open(self.image_files[idx]).convert("RGB")
+        bbox = self.bboxes[idx]
+        label = self.labels[idx]
+        encoding = self.processor(images=image, annotations={"boxes": [bbox], "labels": [label]}, return_tensors="pt")
+        pixel_values = encoding['pixel_values'].squeeze()  # (3, height, width)
+        target = {
+            "boxes": encoding['labels']['boxes'],
+            "labels": encoding['labels']['labels']
+        }
+        return pixel_values, target
 
 def main():
     # Paths
@@ -97,55 +51,40 @@ def main():
     train_annotation_file = 'data/train/train_annotations.coco.json'
     valid_images_dir = 'data/valid'
     valid_annotation_file = 'data/valid/valid_annotations.coco.json'
+
+    # Load model and processor
+    model, processor = create_detr_model()
+    model.train()
+
+    # Dataset and DataLoader
+    train_dataset = COCOCustomDataset(train_annotation_file, train_images_dir, processor)
+    valid_dataset = COCOCustomDataset(valid_annotation_file, valid_images_dir, processor)
     
-    # Load data
-    print("Loading training data...")
-    train_images, train_bboxes, train_labels = load_annotations(train_annotation_file, train_images_dir)
-    
-    print("Loading validation data...")
-    valid_images, valid_bboxes, valid_labels = load_annotations(valid_annotation_file, valid_images_dir)
-    
-    # Create model
-    model = create_model()
-    model.summary()
-    
-    # Compile model
-    loss = {
-        'bbox_output': 'mse',
-        'class_output': 'binary_crossentropy'
-    }
-    metrics = {
-        'bbox_output': 'mae',
-        'class_output': 'accuracy'
-    }
-    model.compile(
-        optimizer=optimizers.Adam(learning_rate=1e-4),
-        loss=loss,
-        metrics=metrics
-    )
-    
-    # Training parameters
-    batch_size = 16
-    epochs = 10
-    steps_per_epoch = len(train_images) // batch_size
-    validation_steps = len(valid_images) // batch_size
-    
-    # Data generators
-    train_generator = data_generator(train_images, train_bboxes, train_labels, batch_size)
-    valid_generator = data_generator(valid_images, valid_bboxes, valid_labels, batch_size)
-    
-    # Train the model
-    model.fit(
-        train_generator,
-        steps_per_epoch=steps_per_epoch,
-        epochs=epochs,
-        validation_data=valid_generator,
-        validation_steps=validation_steps
-    )
-    
-    # Save the model
-    model.save('human_detector_resnet50.h5')
-    print("Model saved as human_detector_resnet50.h5")
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
+    valid_loader = DataLoader(valid_dataset, batch_size=4)
+
+    # Training loop
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+    num_epochs = 10
+
+    for epoch in range(num_epochs):
+        model.train()
+        for batch in train_loader:
+            pixel_values, target = batch
+            outputs = model(pixel_values=pixel_values, labels=target)
+
+            loss = outputs.loss
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
+
+        # Optionally, add validation steps here
+
+    # Save model
+    torch.save(model.state_dict(), "detr_model.pth")
+    print("Model saved as detr_model.pth")
 
 if __name__ == '__main__':
     main()
