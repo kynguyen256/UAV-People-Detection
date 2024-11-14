@@ -33,6 +33,7 @@ def main():
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
+        correct_predictions = 0
     
         for batch in train_loader:
             # Unpack batch data
