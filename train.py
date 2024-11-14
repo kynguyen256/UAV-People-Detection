@@ -30,20 +30,20 @@ def main():
     num_epochs = 10
     
     for epoch in range(num_epochs):
-        model.train()  # Set the model to training mode
+        model.train()
         running_loss = 0.0
-        correct_predictions = 0
-        total_samples = 0
     
         for batch in train_loader:
-            pixel_values, target = batch
-            outputs = model(pixel_values=pixel_values, labels=target)
-            
-            # Calculate loss
-            loss = outputs.loss
-            running_loss += loss.item()  # Accumulate training loss
+            # Unpack batch data
+            pixel_values = batch['pixel_values']
+            labels = batch['labels']
     
-            # Zero the parameter gradients, backward pass, and optimizer step
+            # Forward pass
+            outputs = model(pixel_values=pixel_values, labels=labels)
+            loss = outputs.loss
+            running_loss += loss.item()
+    
+            # Backward pass and optimization
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -137,19 +137,18 @@ class COCOCustomDataset(Dataset):
                 }
             ]
         }
-        
+    
         # Pass the image and correctly formatted annotation to the processor
-        encoding = self.processor(images=image, annotations=annotation, return_tensors="pt")
-        pixel_values = encoding['pixel_values'].squeeze()  # (3, height, width)
-        
-        # Prepare target output in the correct format
-        target = {
-            "boxes": torch.tensor([bbox], dtype=torch.float32),
-            "labels": torch.tensor([label], dtype=torch.int64)
-        }
-        
-        return pixel_values, target
+        encoding = self.processor(images=image, annotations=[annotation], return_tensors="pt")
+        pixel_values = encoding['pixel_values'].squeeze(0)  # Remove batch dimension
+        labels = encoding['labels'][0]  # Since annotations=[annotation], labels is a list of length 1
+    
+        return pixel_values, labels
 
+def collate_fn(batch):
+    pixel_values = torch.stack([item[0] for item in batch])
+    labels = [item[1] for item in batch]  # Keep labels as a list of dicts
+    return {'pixel_values': pixel_values, 'labels': labels}
 
 if __name__ == '__main__':
     main()
