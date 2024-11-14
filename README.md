@@ -65,10 +65,3 @@ To set up the project locally, follow these steps:
    pip install -r requirements.txt
    ```
 
-### AWS Configuration
-
-8. **Configure AWS CLI:**
-   ```bash
-   pip install --upgrade awscli
-   aws configure
-   ```
