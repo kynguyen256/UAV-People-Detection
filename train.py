@@ -24,27 +24,68 @@ def main():
     
     train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
     valid_loader = DataLoader(valid_dataset, batch_size=4)
-
+    
     # Training loop
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
     num_epochs = 10
-
+    
     for epoch in range(num_epochs):
-        model.train()
+        model.train()  # Set the model to training mode
+        running_loss = 0.0
+        correct_predictions = 0
+        total_samples = 0
+    
         for batch in train_loader:
             pixel_values, target = batch
             outputs = model(pixel_values=pixel_values, labels=target)
-
+            
+            # Calculate loss
             loss = outputs.loss
+            running_loss += loss.item()  # Accumulate training loss
+    
+            # Zero the parameter gradients, backward pass, and optimizer step
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+    
+            # Calculate training accuracy
+            _, predicted = torch.max(outputs.logits, dim=1)  # Get predicted class
+            correct_predictions += (predicted == target).sum().item()  # Count correct predictions
+            total_samples += target.size(0)  # Track total samples processed
+    
+        # Average training loss over all batches
+        avg_train_loss = running_loss / len(train_loader)
+        # Calculate training accuracy
+        train_accuracy = 100 * correct_predictions / total_samples
+    
+        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_train_loss:.4f}, Training Accuracy: {train_accuracy:.2f}%")
+    
+        # Validation loop (same as before)
+        model.eval()  # Set the model to evaluation mode
+        val_loss = 0
+        correct_predictions = 0
+        total_samples = 0
+    
+        with torch.no_grad():
+            for batch in val_loader:
+                pixel_values, target = batch
+                outputs = model(pixel_values=pixel_values, labels=target)
+                
+                # Accumulate validation loss
+                val_loss += outputs.loss.item()
+    
+                # Calculate validation accuracy
+                _, predicted = torch.max(outputs.logits, dim=1)
+                correct_predictions += (predicted == target).sum().item()
+                total_samples += target.size(0)
+    
+        # Average validation loss over all batches
+        avg_val_loss = val_loss / len(val_loader)
+        # Calculate validation accuracy
+        val_accuracy = 100 * correct_predictions / total_samples
+    
+        print(f"Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}%")
 
-            print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
-
-        # TODO: Include Train Acc
-        # TODO: Include Val Acc and Loss
-        # TODO: Save the weights during training
 
     # Save model
     torch.save(model.state_dict(), "detr_model.pth")
