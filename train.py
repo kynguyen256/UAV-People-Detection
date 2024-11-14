@@ -87,7 +87,10 @@ def main():
     
         print(f"Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}%")
 
-
+        model_checkpoint_path = f"detr_model_epoch_{epoch+1}.pth"
+        torch.save(model.state_dict(), model_checkpoint_path)
+        print(f"Model saved for epoch {epoch+1} as {model_checkpoint_path}")
+        
     # Save model
     torch.save(model.state_dict(), "detr_model.pth")
     print("Model saved as detr_model.pth")
