@@ -50,43 +50,44 @@ def main():
             loss.backward()
             optimizer.step()
     
-            # Calculate training accuracy
-            _, predicted = torch.max(outputs.logits, dim=1)  # Get predicted class
-            correct_predictions += (predicted == target).sum().item()  # Count correct predictions
-            total_samples += target.size(0)  # Track total samples processed
+            # # Calculate training accuracy
+            # _, predicted = torch.max(outputs.logits, dim=1)  # Get predicted class
+            # correct_predictions += (predicted == target).sum().item()  # Count correct predictions
+            # total_samples += target.size(0)  # Track total samples processed
     
         # Average training loss over all batches
         avg_train_loss = running_loss / len(train_loader)
-        # Calculate training accuracy
-        train_accuracy = 100 * correct_predictions / total_samples
+        # # Calculate training accuracy
+        # train_accuracy = 100 * correct_predictions / total_samples
     
-        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_train_loss:.4f}, Training Accuracy: {train_accuracy:.2f}%")
+        # print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_train_loss:.4f}, Training Accuracy: {train_accuracy:.2f}%")
+        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_train_loss:.4f}")
     
-        # Validation loop (same as before)
-        model.eval()  # Set the model to evaluation mode
-        val_loss = 0
-        correct_predictions = 0
-        total_samples = 0
+        # # Validation loop (same as before)
+        # model.eval()  # Set the model to evaluation mode
+        # val_loss = 0
+        # correct_predictions = 0
+        # total_samples = 0
     
-        with torch.no_grad():
-            for batch in val_loader:
-                pixel_values, target = batch
-                outputs = model(pixel_values=pixel_values, labels=target)
+        # with torch.no_grad():
+        #     for batch in val_loader:
+        #         pixel_values, target = batch
+        #         outputs = model(pixel_values=pixel_values, labels=target)
                 
-                # Accumulate validation loss
-                val_loss += outputs.loss.item()
+        #         # Accumulate validation loss
+        #         val_loss += outputs.loss.item()
     
-                # Calculate validation accuracy
-                _, predicted = torch.max(outputs.logits, dim=1)
-                correct_predictions += (predicted == target).sum().item()
-                total_samples += target.size(0)
+        #         # Calculate validation accuracy
+        #         _, predicted = torch.max(outputs.logits, dim=1)
+        #         correct_predictions += (predicted == target).sum().item()
+        #         total_samples += target.size(0)
     
-        # Average validation loss over all batches
-        avg_val_loss = val_loss / len(val_loader)
-        # Calculate validation accuracy
-        val_accuracy = 100 * correct_predictions / total_samples
+        # # Average validation loss over all batches
+        # avg_val_loss = val_loss / len(val_loader)
+        # # Calculate validation accuracy
+        # val_accuracy = 100 * correct_predictions / total_samples
     
-        print(f"Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}%")
+        # print(f"Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}%")
 
         model_checkpoint_path = f"detr_model_epoch_{epoch+1}.pth"
         torch.save(model.state_dict(), model_checkpoint_path)
