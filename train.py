@@ -78,16 +78,21 @@ class COCOCustomDataset(Dataset):
 
     def __getitem__(self, idx):
         image = Image.open(self.image_files[idx]).convert("RGB")
-        bbox = self.bboxes[idx]
+        bbox = self.bboxes[idx]  # [x_min, y_min, width, height]
         label = self.labels[idx]
+    
+        # Calculate area (width * height)
+        area = bbox[2] * bbox[3]
     
         # COCO-format annotation dictionary
         annotation = {
             "image_id": idx,
             "annotations": [
                 {
-                    "bbox": bbox,  # [x_min, y_min, width, height]
-                    "category_id": label  # Assuming label is an integer (e.g., 1 for "human")
+                    "bbox": bbox,
+                    "category_id": label,  # Assuming label is an integer (e.g., 1 for "human")
+                    "area": area,
+                    "iscrowd": 0  # Assuming 0 for non-crowd annotations
                 }
             ]
         }
