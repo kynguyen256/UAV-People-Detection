@@ -80,12 +80,28 @@ class COCOCustomDataset(Dataset):
         image = Image.open(self.image_files[idx]).convert("RGB")
         bbox = self.bboxes[idx]
         label = self.labels[idx]
-        encoding = self.processor(images=image, annotations={"boxes": [bbox], "labels": [label]}, return_tensors="pt")
-        pixel_values = encoding['pixel_values'].squeeze()  # (3, height, width)
-        target = {
-            "boxes": encoding['labels']['boxes'],
-            "labels": encoding['labels']['labels']
+    
+        # COCO-format annotation dictionary
+        annotation = {
+            "image_id": idx,
+            "annotations": [
+                {
+                    "bbox": bbox,  # [x_min, y_min, width, height]
+                    "category_id": label  # Assuming label is an integer (e.g., 1 for "human")
+                }
+            ]
         }
+        
+        # Pass the image and correctly formatted annotation to the processor
+        encoding = self.processor(images=image, annotations=annotation, return_tensors="pt")
+        pixel_values = encoding['pixel_values'].squeeze()  # (3, height, width)
+        
+        # Prepare target output in the correct format
+        target = {
+            "boxes": torch.tensor([bbox], dtype=torch.float32),
+            "labels": torch.tensor([label], dtype=torch.int64)
+        }
+        
         return pixel_values, target
 
 
