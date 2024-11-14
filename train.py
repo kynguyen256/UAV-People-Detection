@@ -22,8 +22,9 @@ def main():
     train_dataset = COCOCustomDataset(train_annotation_file, train_images_dir, processor)
     valid_dataset = COCOCustomDataset(valid_annotation_file, valid_images_dir, processor)
     
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True)
-    valid_loader = DataLoader(valid_dataset, batch_size=4)
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
+    valid_loader = DataLoader(valid_dataset, batch_size=4, collate_fn=collate_fn)
+
     
     # Training loop
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
@@ -121,28 +122,28 @@ class COCOCustomDataset(Dataset):
         image = Image.open(self.image_files[idx]).convert("RGB")
         bbox = self.bboxes[idx]  # [x_min, y_min, width, height]
         label = self.labels[idx]
-    
+        
         # Calculate area (width * height)
         area = bbox[2] * bbox[3]
-    
+        
         # COCO-format annotation dictionary
         annotation = {
             "image_id": idx,
             "annotations": [
                 {
                     "bbox": bbox,
-                    "category_id": label,  # Assuming label is an integer (e.g., 1 for "human")
+                    "category_id": label,
                     "area": area,
-                    "iscrowd": 0  # Assuming 0 for non-crowd annotations
+                    "iscrowd": 0
                 }
             ]
         }
-    
-        # Pass the image and correctly formatted annotation to the processor
+        
+        # Use the processor to prepare the inputs
         encoding = self.processor(images=image, annotations=[annotation], return_tensors="pt")
         pixel_values = encoding['pixel_values'].squeeze(0)  # Remove batch dimension
-        labels = encoding['labels'][0]  # Since annotations=[annotation], labels is a list of length 1
-    
+        labels = encoding['labels'][0]  # Get the labels for this image
+        
         return pixel_values, labels
 
 def collate_fn(batch):
