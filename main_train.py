@@ -42,7 +42,9 @@ def main():
 
             print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}")
 
-        # Optionally, add validation steps here
+        # TODO: Include Train Acc
+        # TODO: Include Val Acc and Loss
+        # TODO: Save the weights during training
 
     # Save model
     torch.save(model.state_dict(), "detr_model.pth")
