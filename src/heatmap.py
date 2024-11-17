@@ -57,6 +57,6 @@ def store_COCO():
 def heatmaps():
     annotations = store_COCO()
     for anns in annotations:
-        create_heatmap(anns)
+        create_Heatmap(anns)
     
     
