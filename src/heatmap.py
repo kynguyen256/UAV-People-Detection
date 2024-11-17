@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 import cv2
 from pycocotools.coco import COCO
 
-def create_Heatmap():
+def create_Heatmap(anns):
     # Path to your COCO annotation file
-    annotation_file = 'path/to/your/annotations.json'
+    annotation_file = anns
     
     # Load the COCO annotations
     coco = COCO(annotation_file)
@@ -45,5 +45,17 @@ def create_Heatmap():
 heatmap_uint8 = np.uint8(255 * heatmap)
 cv2.imwrite('bounding_box_heatmap.png', heatmap_uint8)
 
+def store_COCO():
+    splits = ['train', 'valid', 'test']
+    for split in splits:
+        input_annotation_path = f'data/{split}/_annotations.coco.json'
+        output_annotation_path = f'data/{split}/{split}_annotations.coco.json'
+        paths = paths.append(input_annotation_path)
+        return paths
 
-
+def heatmaps():
+    annotations = store_COCO()
+    for anns in annotations:
+        create_heatmap(anns)
+    
+    
