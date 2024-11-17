@@ -47,6 +47,7 @@ def create_Heatmap(anns):
 
 def store_COCO():
     splits = ['train', 'valid', 'test']
+    paths = []
     for split in splits:
         input_annotation_path = f'data/{split}/_annotations.coco.json'
         output_annotation_path = f'data/{split}/{split}_annotations.coco.json'
