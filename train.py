@@ -7,6 +7,19 @@ from torch.utils.data import DataLoader, Dataset
 from PIL import Image
 from src.detr import create_detr_model
 
+import torch
+from torch.utils.data import DataLoader
+import colorlog
+from tqdm import tqdm
+
+# Initialize logging
+logger = colorlog.getLogger('training_logger')
+handler = colorlog.StreamHandler()
+formatter = colorlog.ColoredFormatter('%(log_color)s%(levelname)-8s%(reset)s %(blue)s%(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+logger.setLevel('INFO')
+
 def main():
     # Paths
     train_images_dir = 'data/train'
@@ -25,77 +38,74 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
     valid_loader = DataLoader(valid_dataset, batch_size=4, collate_fn=collate_fn)
 
-    
     # Training loop
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
     num_epochs = 10
-    
+
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
         correct_predictions = 0
-    
-        for batch in train_loader:
-            # Unpack batch data
-            pixel_values = batch['pixel_values']
-            labels = batch['labels']
-    
-            # Forward pass
-            outputs = model(pixel_values=pixel_values, labels=labels)
-            loss = outputs.loss
-            running_loss += loss.item()
-    
-            # Backward pass and optimization
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-    
-            # # Calculate training accuracy
-            # _, predicted = torch.max(outputs.logits, dim=1)  # Get predicted class
-            # correct_predictions += (predicted == target).sum().item()  # Count correct predictions
-            # total_samples += target.size(0)  # Track total samples processed
-    
+        total_samples = 0
+
+        # Progress bar for training
+        with tqdm(total=len(train_loader), desc=f"Epoch {epoch+1}/{num_epochs} - Training") as pbar:
+            for batch_idx, batch in enumerate(train_loader):
+                # Unpack batch data
+                pixel_values = batch['pixel_values']
+                labels = batch['labels']
+
+                # Forward pass
+                outputs = model(pixel_values=pixel_values, labels=labels)
+                loss = outputs.loss
+                running_loss += loss.item()
+
+                # Log loss per batch
+                logger.info(f"Batch {batch_idx+1}/{len(train_loader)} - Loss: {loss.item():.4f}")
+
+                # Backward pass and optimization
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+                # Update progress bar
+                pbar.set_postfix(loss=running_loss / (pbar.n + 1))
+                pbar.update(1)
+
         # Average training loss over all batches
         avg_train_loss = running_loss / len(train_loader)
-        # # Calculate training accuracy
-        # train_accuracy = 100 * correct_predictions / total_samples
-    
-        # print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_train_loss:.4f}, Training Accuracy: {train_accuracy:.2f}%")
-        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_train_loss:.4f}")
-    
-        # # Validation loop (same as before)
-        # model.eval()  # Set the model to evaluation mode
-        # val_loss = 0
-        # correct_predictions = 0
-        # total_samples = 0
-    
-        # with torch.no_grad():
-        #     for batch in val_loader:
-        #         pixel_values, target = batch
-        #         outputs = model(pixel_values=pixel_values, labels=target)
-                
-        #         # Accumulate validation loss
-        #         val_loss += outputs.loss.item()
-    
-        #         # Calculate validation accuracy
-        #         _, predicted = torch.max(outputs.logits, dim=1)
-        #         correct_predictions += (predicted == target).sum().item()
-        #         total_samples += target.size(0)
-    
-        # # Average validation loss over all batches
-        # avg_val_loss = val_loss / len(val_loader)
-        # # Calculate validation accuracy
-        # val_accuracy = 100 * correct_predictions / total_samples
-    
-        # print(f"Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}%")
+        logger.info(f"Epoch [{epoch+1}/{num_epochs}], Loss: {avg_train_loss:.4f}")
 
+        # Save model checkpoint
         model_checkpoint_path = f"detr_model_epoch_{epoch+1}.pth"
         torch.save(model.state_dict(), model_checkpoint_path)
-        print(f"Model saved for epoch {epoch+1} as {model_checkpoint_path}")
-        
-    # Save model
+        logger.info(f"Model saved for epoch {epoch+1} as {model_checkpoint_path}")
+
+        # Validation loop
+        model.eval()
+        val_loss = 0.0
+        with torch.no_grad():
+            with tqdm(total=len(valid_loader), desc=f"Epoch {epoch+1}/{num_epochs} - Validation") as pbar:
+                for batch_idx, batch in enumerate(valid_loader):
+                    pixel_values = batch['pixel_values']
+                    labels = batch['labels']
+
+                    # Forward pass
+                    outputs = model(pixel_values=pixel_values, labels=labels)
+                    val_loss += outputs.loss.item()
+
+                    # Log validation loss per batch
+                    logger.info(f"Validation Batch {batch_idx+1}/{len(valid_loader)} - Loss: {outputs.loss.item():.4f}")
+
+                    pbar.set_postfix(val_loss=val_loss / (pbar.n + 1))
+                    pbar.update(1)
+
+        avg_val_loss = val_loss / len(valid_loader)
+        logger.info(f"Epoch [{epoch+1}/{num_epochs}], Validation Loss: {avg_val_loss:.4f}")
+
+    # Save final model
     torch.save(model.state_dict(), "detr_model.pth")
-    print("Model saved as detr_model.pth")
+    logger.info("Final model saved as detr_model.pth")
 
 class COCOCustomDataset(Dataset):
     def __init__(self, annotation_file, images_dir, processor):
