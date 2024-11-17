@@ -51,7 +51,7 @@ def store_COCO():
     for split in splits:
         input_annotation_path = f'data/{split}/_annotations.coco.json'
         output_annotation_path = f'data/{split}/{split}_annotations.coco.json'
-        paths = paths.append(input_annotation_path)
+        paths.append(input_annotation_path)
         return paths
 
 def heatmaps():
