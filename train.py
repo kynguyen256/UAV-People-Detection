@@ -360,6 +360,15 @@ def main():
 
     # Load model and processor
     model, processor = create_detr_model()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)  # Move model to GPU or CPU
+
+    if torch.cuda.is_available():
+        print(f"Model is connected to GPU: {torch.cuda.get_device_name(0)}")
+    else:
+        print("Model is connected to CPU")
+
     model.train()
 
     # Dataset and DataLoader
