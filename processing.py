@@ -2,7 +2,7 @@ from src.processing import check_coco_data
 from src.download_data import download_data
 from src.visualize import randomDisplay
 from src.overlays import createOverlays, process_dataset
-from src.heatmap import create_Heatmap
+from src.heatmap import heatmaps
 
 import os
 import json
@@ -26,7 +26,7 @@ def main():
       createOverlays()
 
       # create bb heatmap
-      create_Heatmap()
+      heatmaps()
 
 if __name__ == "__main__":
     main()
