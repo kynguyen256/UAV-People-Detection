@@ -318,27 +318,32 @@ class COCOCustomDataset(Dataset):
         image = Image.open(self.image_files[idx]).convert("RGB")
         bboxes = self.bboxes[idx]  # List of [x_min, y_min, width, height]
         labels = self.labels[idx]
-
+    
         # Calculate area
         areas = [bbox[2] * bbox[3] for bbox in bboxes]
-
+    
         # COCO-format annotations
-        annotations = []
+        annotations_list = []
         for bbox, label, area in zip(bboxes, labels, areas):
-            annotations.append({
+            annotations_list.append({
                 "bbox": bbox,
                 "category_id": label,
                 "area": area,
                 "iscrowd": 0
             })
-
+    
+        # Prepare annotations dict with 'image_id' and 'annotations'
+        annotations_dict = {
+            "image_id": idx,  # Include image_id
+            "annotations": annotations_list
+        }
+    
         # Prepare inputs using the processor
-        encoding = self.processor(images=image, annotations={"annotations": annotations}, return_tensors="pt")
+        encoding = self.processor(images=image, annotations=annotations_dict, return_tensors="pt")
         pixel_values = encoding['pixel_values'].squeeze(0)  # Remove batch dimension
         target = encoding['labels'][0]  # Get the labels for this image
-
+    
         return pixel_values, target
-
 
 def collate_fn(batch):
     pixel_values = torch.stack([item[0] for item in batch])
