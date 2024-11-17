@@ -42,8 +42,8 @@ def create_Heatmap(anns):
     plt.show()
 
 # Convert heatmap to 8-bit (0-255) scale for saving as an image
-heatmap_uint8 = np.uint8(255 * heatmap)
-cv2.imwrite('bounding_box_heatmap.png', heatmap_uint8)
+    heatmap_uint8 = np.uint8(255 * heatmap)
+    cv2.imwrite('bounding_box_heatmap.png', heatmap_uint8)
 
 def store_COCO():
     splits = ['train', 'valid', 'test']
