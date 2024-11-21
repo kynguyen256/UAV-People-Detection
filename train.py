@@ -385,11 +385,11 @@ def main():
     # Create Trainer and start training
     trainer = Trainer(model, processor, train_loader, valid_loader, optimizer, num_epochs)
     
-    for batch in train_loader:
-        pixel_values, labels = batch
-        pixel_values = pixel_values.to(device)  # Move input tensors to the same device as the model
-        labels = labels.to(device)  # Move labels to the same device as the model
-        outputs = model(pixel_values=pixel_values, labels=labels)  # Forward pass
+    # for batch in train_loader:
+    #    pixel_values, labels = batch
+    #    pixel_values = pixel_values.to(device)  # Move input tensors to the same device as the model
+    #    labels = labels.to(device)  # Move labels to the same device as the model
+    #    outputs = model(pixel_values=pixel_values, labels=labels)  # Forward pass
     
     trainer.train()
 
