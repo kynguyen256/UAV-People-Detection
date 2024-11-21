@@ -1,21 +1,7 @@
+# src/model.py
+
 import tensorflow as tf
 from tensorflow.keras import layers, models
-
-def setup_device():
-    """
-    Configures TensorFlow to use a GPU if available.
-    """
-    gpus = tf.config.list_physical_devices('GPU')
-    if gpus:
-        try:
-            # Restrict TensorFlow to only allocate memory as needed
-            for gpu in gpus:
-                tf.config.experimental.set_memory_growth(gpu, True)
-            print(f"Using GPU: {gpus[0].name}")
-        except RuntimeError as e:
-            print(f"Error setting up GPU: {e}")
-    else:
-        print("No GPU detected. Using CPU.")
 
 def create_model(input_shape=(224, 224, 3), num_classes=1):
     """
@@ -54,9 +40,3 @@ def create_model(input_shape=(224, 224, 3), num_classes=1):
     model = models.Model(inputs=base_model.input, outputs=[bbox_output, class_output])
     
     return model
-
-# Call setup_device() to configure GPU usage before creating the model
-if __name__ == "__main__":
-    setup_device()
-    model = create_model()
-    print("Model created successfully.")
