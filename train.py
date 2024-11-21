@@ -360,15 +360,6 @@ def main():
 
     # Load model and processor
     model, processor = create_detr_model()
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)  # Move model to GPU or CPU
-
-    if torch.cuda.is_available():
-        print(f"Model is connected to GPU: {torch.cuda.get_device_name(0)}")
-    else:
-        print("Model is connected to CPU")
-
     model.train()
 
     # Dataset and DataLoader
@@ -384,13 +375,6 @@ def main():
 
     # Create Trainer and start training
     trainer = Trainer(model, processor, train_loader, valid_loader, optimizer, num_epochs)
-    
-    # for batch in train_loader:
-    #    pixel_values, labels = batch
-    #    pixel_values = pixel_values.to(device)  # Move input tensors to the same device as the model
-    #    labels = labels.to(device)  # Move labels to the same device as the model
-    #    outputs = model(pixel_values=pixel_values, labels=labels)  # Forward pass
-    
     trainer.train()
 
 
