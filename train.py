@@ -235,7 +235,7 @@ class Trainer:
         
         return pixel_values, labels
 
-    def visualize_bboxes(image, gt_boxes, pred_boxes, epoch, batch_idx, sample_idx, output_folder):
+    def visualize_bboxes(self, image, gt_boxes, pred_boxes, epoch, batch_idx, sample_idx, output_folder):
     
         os.makedirs(output_folder, exist_ok=True)
 
