@@ -257,13 +257,20 @@ class Trainer:
         # Convert to ImageDraw object to draw bounding boxes
         draw = ImageDraw.Draw(image)
 
+        # Function to make sure x1 >= x0 and y1 >= y0
+        def correct_box_coords(box):
+            x0, y0, x1, y1 = box
+            return [min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)]
+
         # Draw Ground Truth Boxes in blue
         for box in gt_boxes:
-            draw.rectangle([box[0], box[1], box[2], box[3]], outline="blue", width=3)
+            corrected_box = correct_box_coords(box)
+            draw.rectangle(corrected_box, outline="blue", width=3)
 
         # Draw Predicted Boxes in red
         for box in pred_boxes:
-            draw.rectangle([box[0], box[1], box[2], box[3]], outline="red", width=3)
+            corrected_box = correct_box_coords(box)
+            draw.rectangle(corrected_box, outline="red", width=3)
 
         # Save the image with bounding boxes
         file_name = f"epoch_{epoch}_batch_{batch_idx}_sample_{sample_idx}_bboxes.png"
