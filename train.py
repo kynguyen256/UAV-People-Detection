@@ -4,7 +4,6 @@ import os
 import json
 import torch
 from torch.utils.data import DataLoader, Dataset
-from PIL import Image
 from src.detr import create_detr_model
 
 import colorlog
@@ -12,7 +11,9 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import cv2
 import numpy as np
-from torchvision.transforms.functional import to_pil_image
+from PIL import Image, ImageDraw
+import torchvision.transforms.functional as F
+
 
 # Initialize logging
 logger = colorlog.getLogger('training_logger')
@@ -237,29 +238,39 @@ class Trainer:
         
         return pixel_values, labels
 
-    def visualize_bboxes(self, image, gt_boxes, pred_boxes, epoch, batch_idx, sample_idx, output_folder):
-        # Ensure the tensor is in H x W x C format
-        if isinstance(image, torch.Tensor):
-            if image.ndimension() == 3 and image.size(0) == 3:  # C x H x W
-                image = image.permute(1, 2, 0)  # Convert to H x W x C
-            image = (image * 255).byte().cpu().numpy()  # Move to CPU, scale to [0, 255], and convert to numpy
-        
-        # Convert RGB to BGR for OpenCV
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        
-        # Draw Ground Truth Boxes
+    def visualize_bboxes_on_image(self, image, pred_boxes, gt_boxes, output_folder, epoch, batch_idx, sample_idx):
+        """
+        Overlays bounding boxes on the image for visualization.
+
+        Args:
+            image (Tensor): The image tensor.
+            pred_boxes (Tensor): Predicted bounding boxes in the format [x1, y1, x2, y2].
+            gt_boxes (Tensor): Ground truth bounding boxes in the format [x1, y1, x2, y2].
+            output_folder (str): Path to save the image.
+            epoch (int): Current epoch number.
+            batch_idx (int): Current batch index.
+            sample_idx (int): Index of the current sample in the batch.
+        """
+        # Convert image from tensor to PIL format
+        image = F.to_pil_image(image)
+
+        # Convert to ImageDraw object to draw bounding boxes
+        draw = ImageDraw.Draw(image)
+
+        # Draw Ground Truth Boxes in blue
         for box in gt_boxes:
-            x1, y1, x2, y2 = map(int, box)
-            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Green for GT
+            draw.rectangle([box[0], box[1], box[2], box[3]], outline="blue", width=3)
 
-        # Draw Predicted Boxes
+        # Draw Predicted Boxes in red
         for box in pred_boxes:
-            x1, y1, x2, y2 = map(int, box)
-            cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)  # Blue for predictions
+            draw.rectangle([box[0], box[1], box[2], box[3]], outline="red", width=3)
 
-        # Save the image
-        output_path = f"{output_folder}/epoch_{epoch}_batch_{batch_idx}_sample_{sample_idx}.png"
-        cv2.imwrite(output_path, image)
+        # Save the image with bounding boxes
+        file_name = f"epoch_{epoch}_batch_{batch_idx}_sample_{sample_idx}_bboxes.png"
+        file_path = os.path.join(output_folder, file_name)
+        image.save(file_path)
+
+        print(f"Image with bounding boxes saved to: {file_path}")
 
     
     def train_epoch(self, epoch):
