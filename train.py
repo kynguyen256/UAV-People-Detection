@@ -157,7 +157,6 @@ class Plotter:
         plt.savefig('loss_plot.png')
         plt.close()
 
-
 class Trainer:
     def __init__(self, model, processor, train_loader, val_loader, optimizer, num_epochs):
         # Determine device
@@ -195,6 +194,17 @@ class Trainer:
         # Plot metrics
         self.plotter.plot_metrics(self.num_epochs)
 
+    def _move_to_device(self, labels):
+        """Helper function to move labels to device"""
+        if isinstance(labels, list):
+            return [self._move_to_device(label) for label in labels]
+        elif isinstance(labels, dict):
+            return {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                   for k, v in labels.items()}
+        elif isinstance(labels, torch.Tensor):
+            return labels.to(self.device)
+        return labels
+
     def train_epoch(self, epoch):
         self.model.train()
         running_loss = 0.0
@@ -204,8 +214,7 @@ class Trainer:
             for batch_idx, batch in enumerate(self.train_loader):
                 # Move batch data to device
                 pixel_values = batch['pixel_values'].to(self.device)
-                labels = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
-                         for k, v in batch['labels'].items()}
+                labels = self._move_to_device(batch['labels'])
 
                 # Forward pass
                 outputs = self.model(pixel_values=pixel_values, labels=labels)
@@ -224,8 +233,11 @@ class Trainer:
 
                 for i in range(batch_size):
                     pred_boxes_i = pred_boxes[i].detach().cpu()
-                    labels_i = labels[i]
-                    gt_boxes_i = labels_i['boxes'].cpu()
+                    if isinstance(labels, list):
+                        labels_i = labels[i]
+                        gt_boxes_i = labels_i['boxes'].cpu()
+                    else:
+                        gt_boxes_i = labels['boxes'][i].cpu()
 
                     metrics_calculator.update(pred_boxes_i, gt_boxes_i)
 
@@ -261,8 +273,7 @@ class Trainer:
                 for batch_idx, batch in enumerate(self.val_loader):
                     # Move batch data to device
                     pixel_values = batch['pixel_values'].to(self.device)
-                    labels = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
-                             for k, v in batch['labels'].items()}
+                    labels = self._move_to_device(batch['labels'])
 
                     # Forward pass
                     outputs = self.model(pixel_values=pixel_values, labels=labels)
@@ -275,8 +286,11 @@ class Trainer:
 
                     for i in range(batch_size):
                         pred_boxes_i = pred_boxes[i].cpu()
-                        labels_i = labels[i]
-                        gt_boxes_i = labels_i['boxes'].cpu()
+                        if isinstance(labels, list):
+                            labels_i = labels[i]
+                            gt_boxes_i = labels_i['boxes'].cpu()
+                        else:
+                            gt_boxes_i = labels['boxes'][i].cpu()
 
                         metrics_calculator.update(pred_boxes_i, gt_boxes_i)
 
@@ -293,6 +307,7 @@ class Trainer:
                    f"Recall: {recall:.4f}, mIoU: {mIoU:.4f}")
 
         return avg_loss, precision, recall, mIoU
+        
 class COCOCustomDataset(Dataset):
     def __init__(self, annotation_file, images_dir, processor):
         self.processor = processor
