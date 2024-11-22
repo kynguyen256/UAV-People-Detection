@@ -238,31 +238,28 @@ class Trainer:
         return pixel_values, labels
 
     def visualize_bboxes(self, image, gt_boxes, pred_boxes, epoch, batch_idx, sample_idx, output_folder):
-        
-
-        # Convert PyTorch tensor to PIL image, then to NumPy array
+        # Ensure the tensor is in H x W x C format
         if isinstance(image, torch.Tensor):
-            image = to_pil_image(image.cpu())  # Convert to PIL Image
-            image = np.array(image)  # Convert to NumPy array
-            if len(image.shape) == 2:  # If grayscale, convert to RGB
-                image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-            elif image.shape[2] == 1:  # If single channel, convert to RGB
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        # Draw ground truth bounding boxes in green
+            if image.ndimension() == 3 and image.size(0) == 3:  # C x H x W
+                image = image.permute(1, 2, 0)  # Convert to H x W x C
+            image = (image * 255).byte().numpy()  # Scale to [0, 255] and convert to numpy
+        
+        # Convert RGB to BGR for OpenCV
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        
+        # Draw Ground Truth Boxes
         for box in gt_boxes:
             x1, y1, x2, y2 = map(int, box)
-            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Green for ground truth
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Green for GT
 
-        # Draw predicted bounding boxes in red
+        # Draw Predicted Boxes
         for box in pred_boxes:
             x1, y1, x2, y2 = map(int, box)
-            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 2)  # Red for predictions
+            cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0, 0), 2)  # Blue for predictions
 
         # Save the image
-        save_path = os.path.join(output_folder, f"epoch_{epoch}_batch_{batch_idx}_sample_{sample_idx}.png")
-        cv2.imwrite(save_path, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))  # Convert RGB to BGR for OpenCV saving
-        print(f"Saved visualization to {save_path}")
+        output_path = f"{output_folder}/epoch_{epoch}_batch_{batch_idx}_sample_{sample_idx}.png"
+        cv2.imwrite(output_path, image)
 
 
     def train_epoch(self, epoch):
