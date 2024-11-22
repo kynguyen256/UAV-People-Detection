@@ -160,35 +160,18 @@ class Plotter:
 
 class Trainer:
     def __init__(self, model, processor, train_loader, val_loader, optimizer, num_epochs):
-        self.model = model
+        # Determine device
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f"Using device: {self.device}")
+        
+        # Move model to device
+        self.model = model.to(self.device)
         self.processor = processor
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.optimizer = optimizer
         self.num_epochs = num_epochs
         self.plotter = Plotter()
-
-    def train(self):
-        for epoch in range(self.num_epochs):
-            logger.info(f"Epoch {epoch+1}/{self.num_epochs}")
-            train_loss, train_precision, train_recall, train_mIoU = self.train_epoch(epoch)
-            val_loss, val_precision, val_recall, val_mIoU = self.validate_epoch(epoch)
-
-            # Update plotter
-            self.plotter.update_train_metrics(train_loss, train_precision, train_recall, train_mIoU)
-            self.plotter.update_val_metrics(val_loss, val_precision, val_recall, val_mIoU)
-
-            # Save model checkpoint
-            model_checkpoint_path = f"detr_model_epoch_{epoch+1}.pth"
-            torch.save(self.model.state_dict(), model_checkpoint_path)
-            logger.info(f"Model saved for epoch {epoch+1} as {model_checkpoint_path}")
-
-        # Save final model
-        torch.save(self.model.state_dict(), "detr_model.pth")
-        logger.info("Final model saved as detr_model.pth")
-
-        # Plot metrics
-        self.plotter.plot_metrics(self.num_epochs)
 
     def train_epoch(self, epoch):
         self.model.train()
@@ -197,9 +180,10 @@ class Trainer:
 
         with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch+1}/{self.num_epochs} - Training") as pbar:
             for batch_idx, batch in enumerate(self.train_loader):
-                # Unpack batch data
-                pixel_values = batch['pixel_values']
-                labels = batch['labels']
+                # Move batch data to device
+                pixel_values = batch['pixel_values'].to(self.device)
+                labels = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                         for k, v in batch['labels'].items()}
 
                 # Forward pass
                 outputs = self.model(pixel_values=pixel_values, labels=labels)
@@ -213,32 +197,29 @@ class Trainer:
 
                 # Update metrics
                 batch_size = pixel_values.shape[0]
-                pred_logits = outputs.logits
                 pred_boxes = outputs.pred_boxes
-
+                
                 for i in range(batch_size):
-                    pred_boxes_i = pred_boxes[i]
+                    pred_boxes_i = pred_boxes[i].detach().cpu()
                     labels_i = labels[i]
-                    gt_boxes_i = labels_i['boxes']
-
+                    gt_boxes_i = labels_i['boxes'].cpu()
+                    
                     metrics_calculator.update(pred_boxes_i, gt_boxes_i)
 
                 # Compute batch metrics
                 precision, recall, mIoU = metrics_calculator.compute_metrics()
-
-                # Log loss and metrics per batch
-                logger.info(f"Batch {batch_idx+1}/{len(self.train_loader)} - Loss: {loss.item():.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, mIoU: {mIoU:.4f}")
-
-                # Update progress bar
-                pbar.set_postfix(loss=running_loss / (pbar.n + 1))
+                
+                # Log progress
+                pbar.set_postfix(loss=running_loss / (batch_idx + 1))
                 pbar.update(1)
+
+                if batch_idx % 10 == 0:  # Log every 10 batches
+                    logger.info(f"Batch {batch_idx+1}/{len(self.train_loader)} - Loss: {loss.item():.4f}")
 
         # Compute epoch metrics
         avg_loss = running_loss / len(self.train_loader)
         precision, recall, mIoU = metrics_calculator.compute_metrics()
-
-        logger.info(f"Epoch [{epoch+1}/{self.num_epochs}], Loss: {avg_loss:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, mIoU: {mIoU:.4f}")
-
+        
         return avg_loss, precision, recall, mIoU
 
     def validate_epoch(self, epoch):
@@ -249,37 +230,32 @@ class Trainer:
         with torch.no_grad():
             with tqdm(total=len(self.val_loader), desc=f"Epoch {epoch+1}/{self.num_epochs} - Validation") as pbar:
                 for batch_idx, batch in enumerate(self.val_loader):
-                    pixel_values = batch['pixel_values']
-                    labels = batch['labels']
+                    # Move batch data to device
+                    pixel_values = batch['pixel_values'].to(self.device)
+                    labels = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                             for k, v in batch['labels'].items()}
 
-                    # Forward pass
                     outputs = self.model(pixel_values=pixel_values, labels=labels)
                     val_loss += outputs.loss.item()
 
                     # Update metrics
                     batch_size = pixel_values.shape[0]
-                    pred_logits = outputs.logits
                     pred_boxes = outputs.pred_boxes
 
                     for i in range(batch_size):
-                        pred_boxes_i = pred_boxes[i]
+                        pred_boxes_i = pred_boxes[i].cpu()
                         labels_i = labels[i]
-                        gt_boxes_i = labels_i['boxes']
-
+                        gt_boxes_i = labels_i['boxes'].cpu()
+                        
                         metrics_calculator.update(pred_boxes_i, gt_boxes_i)
 
-                    # Update progress bar
-                    pbar.set_postfix(val_loss=val_loss / (pbar.n + 1))
+                    pbar.set_postfix(val_loss=val_loss / (batch_idx + 1))
                     pbar.update(1)
 
-        # Compute epoch metrics
         avg_loss = val_loss / len(self.val_loader)
         precision, recall, mIoU = metrics_calculator.compute_metrics()
-
-        logger.info(f"Epoch [{epoch+1}/{self.num_epochs}], Validation Loss: {avg_loss:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, mIoU: {mIoU:.4f}")
-
+        
         return avg_loss, precision, recall, mIoU
-
 
 class COCOCustomDataset(Dataset):
     def __init__(self, annotation_file, images_dir, processor):
