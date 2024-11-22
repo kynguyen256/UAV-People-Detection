@@ -199,11 +199,38 @@ class Trainer:
         if isinstance(labels, list):
             return [self._move_to_device(label) for label in labels]
         elif isinstance(labels, dict):
-            return {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
-                   for k, v in labels.items()}
+            moved_dict = {}
+            for k, v in labels.items():
+                if isinstance(v, torch.Tensor):
+                    moved_dict[k] = v.to(self.device)
+                elif isinstance(v, (list, dict)):
+                    moved_dict[k] = self._move_to_device(v)
+                else:
+                    moved_dict[k] = v
+            return moved_dict
         elif isinstance(labels, torch.Tensor):
             return labels.to(self.device)
         return labels
+
+    def _prepare_batch(self, batch):
+        """Prepare batch data by moving everything to the correct device"""
+        pixel_values = batch['pixel_values'].to(self.device)
+        
+        if isinstance(batch['labels'], list):
+            labels = []
+            for label_dict in batch['labels']:
+                processed_dict = {}
+                for k, v in label_dict.items():
+                    if isinstance(v, torch.Tensor):
+                        processed_dict[k] = v.to(self.device)
+                    else:
+                        processed_dict[k] = v
+                labels.append(processed_dict)
+        else:
+            labels = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
+                     for k, v in batch['labels'].items()}
+        
+        return pixel_values, labels
 
     def train_epoch(self, epoch):
         self.model.train()
@@ -212,9 +239,8 @@ class Trainer:
 
         with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch+1}/{self.num_epochs} - Training") as pbar:
             for batch_idx, batch in enumerate(self.train_loader):
-                # Move batch data to device
-                pixel_values = batch['pixel_values'].to(self.device)
-                labels = self._move_to_device(batch['labels'])
+                # Prepare batch data
+                pixel_values, labels = self._prepare_batch(batch)
 
                 # Forward pass
                 outputs = self.model(pixel_values=pixel_values, labels=labels)
@@ -228,7 +254,6 @@ class Trainer:
 
                 # Update metrics
                 batch_size = pixel_values.shape[0]
-                pred_logits = outputs.logits
                 pred_boxes = outputs.pred_boxes
 
                 for i in range(batch_size):
@@ -244,12 +269,11 @@ class Trainer:
                 # Compute batch metrics
                 precision, recall, mIoU = metrics_calculator.compute_metrics()
 
-                # Log loss and metrics per batch
-                if batch_idx % 10 == 0:  # Log every 10 batches
+                # Log progress
+                if batch_idx % 10 == 0:
                     logger.info(f"Batch {batch_idx+1}/{len(self.train_loader)} - Loss: {loss.item():.4f}, "
                               f"Precision: {precision:.4f}, Recall: {recall:.4f}, mIoU: {mIoU:.4f}")
 
-                # Update progress bar
                 pbar.set_postfix(loss=running_loss / (batch_idx + 1))
                 pbar.update(1)
 
@@ -271,9 +295,8 @@ class Trainer:
         with torch.no_grad():
             with tqdm(total=len(self.val_loader), desc=f"Epoch {epoch+1}/{self.num_epochs} - Validation") as pbar:
                 for batch_idx, batch in enumerate(self.val_loader):
-                    # Move batch data to device
-                    pixel_values = batch['pixel_values'].to(self.device)
-                    labels = self._move_to_device(batch['labels'])
+                    # Prepare batch data
+                    pixel_values, labels = self._prepare_batch(batch)
 
                     # Forward pass
                     outputs = self.model(pixel_values=pixel_values, labels=labels)
@@ -281,7 +304,6 @@ class Trainer:
 
                     # Update metrics
                     batch_size = pixel_values.shape[0]
-                    pred_logits = outputs.logits
                     pred_boxes = outputs.pred_boxes
 
                     for i in range(batch_size):
@@ -294,7 +316,6 @@ class Trainer:
 
                         metrics_calculator.update(pred_boxes_i, gt_boxes_i)
 
-                    # Update progress bar
                     pbar.set_postfix(val_loss=val_loss / (batch_idx + 1))
                     pbar.update(1)
 
