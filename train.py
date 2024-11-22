@@ -242,7 +242,7 @@ class Trainer:
         if isinstance(image, torch.Tensor):
             if image.ndimension() == 3 and image.size(0) == 3:  # C x H x W
                 image = image.permute(1, 2, 0)  # Convert to H x W x C
-            image = (image * 255).byte().numpy()  # Scale to [0, 255] and convert to numpy
+            image = (image * 255).byte().cpu().numpy()  # Move to CPU, scale to [0, 255], and convert to numpy
         
         # Convert RGB to BGR for OpenCV
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
@@ -261,7 +261,7 @@ class Trainer:
         output_path = f"{output_folder}/epoch_{epoch}_batch_{batch_idx}_sample_{sample_idx}.png"
         cv2.imwrite(output_path, image)
 
-
+    
     def train_epoch(self, epoch):
         self.model.train()
         running_loss = 0.0
