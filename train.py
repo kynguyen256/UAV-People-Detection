@@ -11,6 +11,8 @@ import colorlog
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 import cv2
+import numpy as np
+from torchvision.transforms.functional import to_pil_image
 
 # Initialize logging
 logger = colorlog.getLogger('training_logger')
@@ -236,35 +238,31 @@ class Trainer:
         return pixel_values, labels
 
     def visualize_bboxes(self, image, gt_boxes, pred_boxes, epoch, batch_idx, sample_idx, output_folder):
-    
-        os.makedirs(output_folder, exist_ok=True)
+        
 
-        # Convert tensors to numpy arrays
+        # Convert PyTorch tensor to PIL image, then to NumPy array
         if isinstance(image, torch.Tensor):
-            image = image.permute(1, 2, 0).cpu().numpy()  # Convert CHW to HWC
-        if isinstance(gt_boxes, torch.Tensor):
-            gt_boxes = gt_boxes.cpu().numpy()
-        if isinstance(pred_boxes, torch.Tensor):
-            pred_boxes = pred_boxes.cpu().numpy()
+            image = to_pil_image(image.cpu())  # Convert to PIL Image
+            image = np.array(image)  # Convert to NumPy array
+            if len(image.shape) == 2:  # If grayscale, convert to RGB
+                image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+            elif image.shape[2] == 1:  # If single channel, convert to RGB
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        # Convert image to uint8 if needed
-        image = (image * 255).astype('uint8') if image.max() <= 1 else image.astype('uint8')
-
-        # Draw ground truth boxes (green)
+        # Draw ground truth bounding boxes in green
         for box in gt_boxes:
             x1, y1, x2, y2 = map(int, box)
-            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Green for ground truth
 
-        # Draw predicted boxes (red)
+        # Draw predicted bounding boxes in red
         for box in pred_boxes:
             x1, y1, x2, y2 = map(int, box)
-            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 2)  # Red for predictions
 
-        # Save the image to the specified output folder
-        output_path = os.path.join(output_folder, f'epoch_{epoch}_batch_{batch_idx}_sample_{sample_idx}.png')
-        cv2.imwrite(output_path, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
-
-        print(f"Saved visualized bounding box image: {output_path}")
+        # Save the image
+        save_path = os.path.join(output_folder, f"epoch_{epoch}_batch_{batch_idx}_sample_{sample_idx}.png")
+        cv2.imwrite(save_path, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))  # Convert RGB to BGR for OpenCV saving
+        print(f"Saved visualization to {save_path}")
 
 
     def train_epoch(self, epoch):
