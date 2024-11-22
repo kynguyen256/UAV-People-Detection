@@ -171,6 +171,7 @@ class Trainer:
         self.optimizer = optimizer
         self.num_epochs = num_epochs
         self.plotter = Plotter()
+        self.google_drive_save_folder = "/content/drive/MyDrive/detr_weights"
 
     def train(self):
         for epoch in range(self.num_epochs):
@@ -183,7 +184,7 @@ class Trainer:
             self.plotter.update_val_metrics(val_loss, val_precision, val_recall, val_mIoU)
 
             # Save model checkpoint
-            model_checkpoint_path = f"detr_model_epoch_{epoch+1}.pth"
+            model_checkpoint_path = f"{self.google_drive_save_folder}/detr_model_epoch_{epoch+1}.pth"
             torch.save(self.model.state_dict(), model_checkpoint_path)
             logger.info(f"Model saved for epoch {epoch+1} as {model_checkpoint_path}")
 
