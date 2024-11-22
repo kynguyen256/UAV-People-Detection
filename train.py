@@ -277,7 +277,7 @@ class Trainer:
         self.model.train()
         running_loss = 0.0
         metrics_calculator = MetricsCalculator()
-        output_folder = '/content/drive/MyDrive/bbox_inspections'  # Path to save images
+        output_folder = '/content/drive/MyDrive/bbox_comparisons'  # Path to save images
         os.makedirs(output_folder, exist_ok=True)
 
         with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch+1}/{self.num_epochs} - Training") as pbar:
@@ -309,17 +309,16 @@ class Trainer:
 
                     metrics_calculator.update(pred_boxes_i, gt_boxes_i)
 
-                    # **Visualize bounding boxes for the first sample of every 10th batch**
-                    if batch_idx % 10 == 0 and i == 0:
-                        self.visualize_bboxes(
-                            image=pixel_values[i], 
-                            gt_boxes=gt_boxes_i, 
-                            pred_boxes=pred_boxes_i, 
-                            epoch=epoch, 
-                            batch_idx=batch_idx, 
-                            sample_idx=i, 
-                            output_folder=output_folder
-                        )
+                    # Visualize bounding boxes on the image
+                    self.visualize_bboxes_on_image(
+                        image=pixel_values[i],  # Image in tensor format
+                        gt_boxes=gt_boxes_i,
+                        pred_boxes=pred_boxes_i,
+                        epoch=epoch,
+                        batch_idx=batch_idx,
+                        sample_idx=i,
+                        output_folder=output_folder
+                    )
 
                 # Compute batch metrics
                 precision, recall, mIoU = metrics_calculator.compute_metrics()
@@ -341,6 +340,7 @@ class Trainer:
                     f"Recall: {recall:.4f}, mIoU: {mIoU:.4f}")
 
         return avg_loss, precision, recall, mIoU
+
 
     def validate_epoch(self, epoch):
         self.model.eval()
