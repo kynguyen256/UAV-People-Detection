@@ -10,6 +10,7 @@ from src.detr import create_detr_model
 import colorlog
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import cv2
 
 # Initialize logging
 logger = colorlog.getLogger('training_logger')
@@ -172,6 +173,7 @@ class Trainer:
         self.num_epochs = num_epochs
         self.plotter = Plotter()
         self.google_drive_save_folder = "/content/drive/MyDrive/detr_weights"
+        
 
     def train(self):
         for epoch in range(self.num_epochs):
@@ -233,10 +235,44 @@ class Trainer:
         
         return pixel_values, labels
 
+    def visualize_bboxes(image, gt_boxes, pred_boxes, epoch, batch_idx, sample_idx, output_folder):
+    
+        os.makedirs(output_folder, exist_ok=True)
+
+        # Convert tensors to numpy arrays
+        if isinstance(image, torch.Tensor):
+            image = image.permute(1, 2, 0).cpu().numpy()  # Convert CHW to HWC
+        if isinstance(gt_boxes, torch.Tensor):
+            gt_boxes = gt_boxes.cpu().numpy()
+        if isinstance(pred_boxes, torch.Tensor):
+            pred_boxes = pred_boxes.cpu().numpy()
+
+        # Convert image to uint8 if needed
+        image = (image * 255).astype('uint8') if image.max() <= 1 else image.astype('uint8')
+
+        # Draw ground truth boxes (green)
+        for box in gt_boxes:
+            x1, y1, x2, y2 = map(int, box)
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+        # Draw predicted boxes (red)
+        for box in pred_boxes:
+            x1, y1, x2, y2 = map(int, box)
+            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 0, 255), 2)
+
+        # Save the image to the specified output folder
+        output_path = os.path.join(output_folder, f'epoch_{epoch}_batch_{batch_idx}_sample_{sample_idx}.png')
+        cv2.imwrite(output_path, cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+
+        print(f"Saved visualized bounding box image: {output_path}")
+
+
     def train_epoch(self, epoch):
         self.model.train()
         running_loss = 0.0
         metrics_calculator = MetricsCalculator()
+        output_folder = '/content/drive/MyDrive/bbox_inspections'  # Path to save images
+        os.makedirs(output_folder, exist_ok=True)
 
         with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch+1}/{self.num_epochs} - Training") as pbar:
             for batch_idx, batch in enumerate(self.train_loader):
@@ -267,13 +303,25 @@ class Trainer:
 
                     metrics_calculator.update(pred_boxes_i, gt_boxes_i)
 
+                    # **Visualize bounding boxes for the first sample of every 10th batch**
+                    if batch_idx % 10 == 0 and i == 0:
+                        visualize_bboxes(
+                            image=pixel_values[i], 
+                            gt_boxes=gt_boxes_i, 
+                            pred_boxes=pred_boxes_i, 
+                            epoch=epoch, 
+                            batch_idx=batch_idx, 
+                            sample_idx=i, 
+                            output_folder=output_folder
+                        )
+
                 # Compute batch metrics
                 precision, recall, mIoU = metrics_calculator.compute_metrics()
 
                 # Log progress
                 if batch_idx % 10 == 0:
                     logger.info(f"Batch {batch_idx+1}/{len(self.train_loader)} - Loss: {loss.item():.4f}, "
-                              f"Precision: {precision:.4f}, Recall: {recall:.4f}, mIoU: {mIoU:.4f}")
+                                f"Precision: {precision:.4f}, Recall: {recall:.4f}, mIoU: {mIoU:.4f}")
 
                 pbar.set_postfix(loss=running_loss / (batch_idx + 1))
                 pbar.update(1)
@@ -283,8 +331,8 @@ class Trainer:
         precision, recall, mIoU = metrics_calculator.compute_metrics()
 
         logger.info(f"Epoch [{epoch+1}/{self.num_epochs}], "
-                   f"Loss: {avg_loss:.4f}, Precision: {precision:.4f}, "
-                   f"Recall: {recall:.4f}, mIoU: {mIoU:.4f}")
+                    f"Loss: {avg_loss:.4f}, Precision: {precision:.4f}, "
+                    f"Recall: {recall:.4f}, mIoU: {mIoU:.4f}")
 
         return avg_loss, precision, recall, mIoU
 
