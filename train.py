@@ -305,7 +305,7 @@ class Trainer:
 
                     # **Visualize bounding boxes for the first sample of every 10th batch**
                     if batch_idx % 10 == 0 and i == 0:
-                        visualize_bboxes(
+                        self.visualize_bboxes(
                             image=pixel_values[i], 
                             gt_boxes=gt_boxes_i, 
                             pred_boxes=pred_boxes_i, 
