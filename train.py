@@ -238,54 +238,11 @@ class Trainer:
         
         return pixel_values, labels
 
-    def visualize_bboxes_on_image(self, image, pred_boxes, gt_boxes, output_folder, epoch, batch_idx, sample_idx):
-        """
-        Overlays bounding boxes on the image for visualization.
-
-        Args:
-            image (Tensor): The image tensor.
-            pred_boxes (Tensor): Predicted bounding boxes in the format [x1, y1, x2, y2].
-            gt_boxes (Tensor): Ground truth bounding boxes in the format [x1, y1, x2, y2].
-            output_folder (str): Path to save the image.
-            epoch (int): Current epoch number.
-            batch_idx (int): Current batch index.
-            sample_idx (int): Index of the current sample in the batch.
-        """
-        # Convert image from tensor to PIL format
-        image = F.to_pil_image(image)
-
-        # Convert to ImageDraw object to draw bounding boxes
-        draw = ImageDraw.Draw(image)
-
-        # Function to make sure x1 >= x0 and y1 >= y0
-        def correct_box_coords(box):
-            x0, y0, x1, y1 = box
-            return [min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)]
-
-        # Draw Ground Truth Boxes in blue
-        for box in gt_boxes:
-            corrected_box = correct_box_coords(box)
-            draw.rectangle(corrected_box, outline="blue", width=3)
-
-        # Draw Predicted Boxes in red
-        for box in pred_boxes:
-            corrected_box = correct_box_coords(box)
-            draw.rectangle(corrected_box, outline="red", width=3)
-
-        # Save the image with bounding boxes
-        file_name = f"epoch_{epoch}_batch_{batch_idx}_sample_{sample_idx}_bboxes.png"
-        file_path = os.path.join(output_folder, file_name)
-        image.save(file_path)
-
-        print(f"Image with bounding boxes saved to: {file_path}")
-
     
     def train_epoch(self, epoch):
         self.model.train()
         running_loss = 0.0
         metrics_calculator = MetricsCalculator()
-        output_folder = '/content/drive/MyDrive/bbox_comparisons'  # Path to save images
-        os.makedirs(output_folder, exist_ok=True)
 
         with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch+1}/{self.num_epochs} - Training") as pbar:
             for batch_idx, batch in enumerate(self.train_loader):
@@ -302,30 +259,21 @@ class Trainer:
                 loss.backward()
                 self.optimizer.step()
 
-                # Update metrics
+                # Update metrics and log bounding boxes
                 batch_size = pixel_values.shape[0]
-                pred_boxes = outputs.pred_boxes
+                pred_boxes = outputs.pred_boxes  # Predicted boxes from the model
 
                 for i in range(batch_size):
                     pred_boxes_i = pred_boxes[i].detach().cpu()
-                    if isinstance(labels, list):
-                        labels_i = labels[i]
-                        gt_boxes_i = labels_i['boxes'].cpu()
-                    else:
-                        gt_boxes_i = labels['boxes'][i].cpu()
+                    gt_boxes_i = labels[i]["boxes"].cpu()  # Ground truth boxes from the dataset
 
+                    # Update metrics
                     metrics_calculator.update(pred_boxes_i, gt_boxes_i)
 
-                    # Visualize bounding boxes on the image
-                    self.visualize_bboxes_on_image(
-                        image=pixel_values[i],  # Image in tensor format
-                        gt_boxes=gt_boxes_i,
-                        pred_boxes=pred_boxes_i,
-                        epoch=epoch,
-                        batch_idx=batch_idx,
-                        sample_idx=i,
-                        output_folder=output_folder
-                    )
+                    # Log bounding boxes for inspection
+                    print(f"\n# Batch {batch_idx}, Sample {i}")
+                    print(f"# Ground Truth Boxes (GT): {gt_boxes_i.tolist()}")
+                    print(f"# Predicted Boxes (Pred): {pred_boxes_i.tolist()}\n")
 
                 # Compute batch metrics
                 precision, recall, mIoU = metrics_calculator.compute_metrics()
