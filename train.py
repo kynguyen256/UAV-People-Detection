@@ -176,6 +176,7 @@ class Trainer:
         self.num_epochs = num_epochs
         self.plotter = Plotter()
         self.google_drive_save_folder = "/content/drive/MyDrive/detr_weights"
+        os.makedirs(self.google_drive_save_folder, exist_ok=True)
         
 
     def train(self):
