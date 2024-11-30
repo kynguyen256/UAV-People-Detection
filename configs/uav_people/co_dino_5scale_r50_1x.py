@@ -335,7 +335,7 @@ log_config = dict(
                 init_kwargs={
                     #'entity': "nexterarobotics",
                     'project': "UAV People", 
-                    'name': "co_dino_5scale_r50_1x_excavator_V1.0"},
+                    'name': "co_dino_5scale_r50_1x_v1.0"},
             ),
     ])
 
