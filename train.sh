@@ -20,6 +20,5 @@ if ! python3 train.py configs/co_dino_vit/co_dino_5scale_vit_large_coco.py --wor
   exit 1
 fi
 
-
 # Ensure that the sync process is terminated after the script completes:
 kill $PID1
