@@ -333,8 +333,8 @@ log_config = dict(
                 by_epoch=False, 
                 num_eval_images=0, 
                 init_kwargs={
-                    'entity': "nexterarobotics",
-                    'project': "Safety_Tracking", 
+                    #'entity': "nexterarobotics",
+                    'project': "UAV People", 
                     'name': "co_dino_5scale_r50_1x_excavator_V1.0"},
             ),
     ])
