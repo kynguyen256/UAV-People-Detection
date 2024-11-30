@@ -19,9 +19,9 @@ max_iters = 100000
 max_checkpoints = 3
 
 # Interval Settings
-log_interval = 100
-wandb_interval = 99
-evaluation_interval = 1499
+log_interval = 10
+wandb_interval = 9
+evaluation_interval = 149
 checkpoint_interval = int(evaluation_interval/max_checkpoints)
 
 # Specify dataset related settings
