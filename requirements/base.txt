@@ -6,6 +6,7 @@ PyYAML>=5.3.1
 tqdm>=4.41.0
 imageio
 numpy-stl
+colorlog
 
 # ml ------------------------------------------
 shapely==1.8.1 
