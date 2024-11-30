@@ -1,440 +1,244 @@
-# main_train.py
-
+# Copyright (c) OpenMMLab. All rights reserved.
+import argparse
+import copy
 import os
-import json
+import os.path as osp
+import time
+import warnings
+
+import mmcv
 import torch
-from torch.utils.data import DataLoader, Dataset
-from src.detr import create_detr_model
-
-import colorlog
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-import cv2
-import numpy as np
-from PIL import Image, ImageDraw
-import torchvision.transforms.functional as F
-
-
-# Initialize logging
-logger = colorlog.getLogger('training_logger')
-handler = colorlog.StreamHandler()
-formatter = colorlog.ColoredFormatter('%(log_color)s%(levelname)-8s%(reset)s %(blue)s%(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-logger.setLevel('INFO')
-
-
-def box_cxcywh_to_xyxy(boxes):
-    # Convert [x_center, y_center, width, height] to [x_min, y_min, x_max, y_max]
-    x_c, y_c, w, h = boxes.unbind(-1)
-    b = [(x_c - 0.5 * w), (y_c - 0.5 * h),
-         (x_c + 0.5 * w), (y_c + 0.5 * h)]
-    return torch.stack(b, dim=-1)
-
-
-def compute_iou_matrix(boxes1, boxes2):
-    # boxes1: [N, 4], boxes2: [M, 4] in [x_min, y_min, x_max, y_max]
-    # Compute the intersection over union between two sets of boxes
-    N = boxes1.shape[0]
-    M = boxes2.shape[0]
-
-    # Expand boxes
-    boxes1 = boxes1[:, None, :]  # [N, 1, 4]
-    boxes2 = boxes2[None, :, :]  # [1, M, 4]
-
-    # Compute intersection
-    x1 = torch.max(boxes1[..., 0], boxes2[..., 0])
-    y1 = torch.max(boxes1[..., 1], boxes2[..., 1])
-    x2 = torch.min(boxes1[..., 2], boxes2[..., 2])
-    y2 = torch.min(boxes1[..., 3], boxes2[..., 3])
-
-    inter_area = (x2 - x1).clamp(min=0) * (y2 - y1).clamp(min=0)
-
-    # Compute union
-    area1 = (boxes1[..., 2] - boxes1[..., 0]) * (boxes1[..., 3] - boxes1[..., 1])
-    area2 = (boxes2[..., 2] - boxes2[..., 0]) * (boxes2[..., 3] - boxes2[..., 1])
-
-    union_area = area1 + area2 - inter_area
-
-    iou = inter_area / union_area  # [N, M]
-
-    return iou
-
-
-class MetricsCalculator:
-    def __init__(self):
-        self.reset_epoch_metrics()
-
-    def reset_epoch_metrics(self):
-        self.TP = 0
-        self.FP = 0
-        self.FN = 0
-        self.IoU_sum = 0.0
-        self.num_TP = 0
-
-    def update(self, pred_boxes, gt_boxes):
-        # Convert boxes to xyxy format
-        pred_boxes_xyxy = box_cxcywh_to_xyxy(pred_boxes)
-        gt_boxes_xyxy = box_cxcywh_to_xyxy(gt_boxes)
-
-        # Compute IoU matrix
-        iou_matrix = compute_iou_matrix(pred_boxes_xyxy, gt_boxes_xyxy)
-
-        # For predicted boxes
-        max_iou_per_pred, _ = iou_matrix.max(dim=1)
-        TP_pred_mask = max_iou_per_pred > 0
-        num_TP = TP_pred_mask.sum().item()
-        num_FP = (~TP_pred_mask).sum().item()
-
-        # For ground truth boxes
-        max_iou_per_gt, _ = iou_matrix.max(dim=0)
-        FN_gt_mask = max_iou_per_gt == 0
-        num_FN = FN_gt_mask.sum().item()
-
-        # For mIoU
-        IoUs_TP = max_iou_per_pred[TP_pred_mask]
-        sum_IoU_TP = IoUs_TP.sum().item()
-
-        # Update metrics
-        self.TP += num_TP
-        self.FP += num_FP
-        self.FN += num_FN
-        self.IoU_sum += sum_IoU_TP
-        self.num_TP += num_TP
-
-    def compute_metrics(self):
-        precision = self.TP / (self.TP + self.FP) if (self.TP + self.FP) > 0 else 0
-        recall = self.TP / (self.TP + self.FN) if (self.TP + self.FN) > 0 else 0
-        mIoU = self.IoU_sum / self.num_TP if self.num_TP > 0 else 0
-        return precision, recall, mIoU
-
-
-class Plotter:
-    def __init__(self):
-        self.train_losses = []
-        self.val_losses = []
-        self.train_precisions = []
-        self.val_precisions = []
-        self.train_recalls = []
-        self.val_recalls = []
-        self.train_mIoUs = []
-        self.val_mIoUs = []
-
-    def update_train_metrics(self, loss, precision, recall, mIoU):
-        self.train_losses.append(loss)
-        self.train_precisions.append(precision)
-        self.train_recalls.append(recall)
-        self.train_mIoUs.append(mIoU)
-
-    def update_val_metrics(self, loss, precision, recall, mIoU):
-        self.val_losses.append(loss)
-        self.val_precisions.append(precision)
-        self.val_recalls.append(recall)
-        self.val_mIoUs.append(mIoU)
-
-    def plot_metrics(self, num_epochs):
-        epochs_list = list(range(1, num_epochs + 1))
-
-        # Plot for precision, recall, mIoU
-        plt.figure()
-        plt.plot(epochs_list, self.train_precisions, label='Train Precision')
-        plt.plot(epochs_list, self.val_precisions, label='Val Precision')
-        plt.plot(epochs_list, self.train_recalls, label='Train Recall')
-        plt.plot(epochs_list, self.val_recalls, label='Val Recall')
-        plt.plot(epochs_list, self.train_mIoUs, label='Train mIoU')
-        plt.plot(epochs_list, self.val_mIoUs, label='Val mIoU')
-        plt.xlabel('Epoch')
-        plt.ylabel('Metric')
-        plt.title('Precision, Recall, mIoU over Epochs')
-        plt.legend()
-        plt.savefig('metrics_plot.png')
-        plt.close()
-
-        # Plot for loss
-        plt.figure()
-        plt.plot(epochs_list, self.train_losses, label='Train Loss')
-        plt.plot(epochs_list, self.val_losses, label='Val Loss')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.title('Loss over Epochs')
-        plt.legend()
-        plt.savefig('loss_plot.png')
-        plt.close()
-
-class Trainer:
-    def __init__(self, model, processor, train_loader, val_loader, optimizer, num_epochs):
-        # Determine device
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logger.info(f"Using device: {self.device}")
-        
-        # Move model to device
-        self.model = model.to(self.device)
-        self.processor = processor
-        self.train_loader = train_loader
-        self.val_loader = val_loader
-        self.optimizer = optimizer
-        self.num_epochs = num_epochs
-        self.plotter = Plotter()
-        self.google_drive_save_folder = "/content/drive/MyDrive/detr_weights"
-        os.makedirs(self.google_drive_save_folder, exist_ok=True)
-        
-
-    def train(self):
-        for epoch in range(self.num_epochs):
-            logger.info(f"Epoch {epoch+1}/{self.num_epochs}")
-            train_loss, train_precision, train_recall, train_mIoU = self.train_epoch(epoch)
-            val_loss, val_precision, val_recall, val_mIoU = self.validate_epoch(epoch)
-
-            # Update plotter
-            self.plotter.update_train_metrics(train_loss, train_precision, train_recall, train_mIoU)
-            self.plotter.update_val_metrics(val_loss, val_precision, val_recall, val_mIoU)
-
-            # Save model checkpoint
-            model_checkpoint_path = f"{self.google_drive_save_folder}/detr_model_epoch_{epoch+1}.pth"
-            torch.save(self.model.state_dict(), model_checkpoint_path)
-            logger.info(f"Model saved for epoch {epoch+1} as {model_checkpoint_path}")
-
-        # Save final model
-        torch.save(self.model.state_dict(), "detr_model.pth")
-        logger.info("Final model saved as detr_model.pth")
-
-        # Plot metrics
-        self.plotter.plot_metrics(self.num_epochs)
-
-    def _move_to_device(self, labels):
-        """Helper function to move labels to device"""
-        if isinstance(labels, list):
-            return [self._move_to_device(label) for label in labels]
-        elif isinstance(labels, dict):
-            moved_dict = {}
-            for k, v in labels.items():
-                if isinstance(v, torch.Tensor):
-                    moved_dict[k] = v.to(self.device)
-                elif isinstance(v, (list, dict)):
-                    moved_dict[k] = self._move_to_device(v)
-                else:
-                    moved_dict[k] = v
-            return moved_dict
-        elif isinstance(labels, torch.Tensor):
-            return labels.to(self.device)
-        return labels
-
-    def _prepare_batch(self, batch):
-        """Prepare batch data by moving everything to the correct device"""
-        pixel_values = batch['pixel_values'].to(self.device)
-        
-        if isinstance(batch['labels'], list):
-            labels = []
-            for label_dict in batch['labels']:
-                processed_dict = {}
-                for k, v in label_dict.items():
-                    if isinstance(v, torch.Tensor):
-                        processed_dict[k] = v.to(self.device)
-                    else:
-                        processed_dict[k] = v
-                labels.append(processed_dict)
-        else:
-            labels = {k: v.to(self.device) if isinstance(v, torch.Tensor) else v 
-                     for k, v in batch['labels'].items()}
-        
-        return pixel_values, labels
-
-    
-    def train_epoch(self, epoch):
-        self.model.train()
-        running_loss = 0.0
-        metrics_calculator = MetricsCalculator()
-
-        with tqdm(total=len(self.train_loader), desc=f"Epoch {epoch+1}/{self.num_epochs} - Training") as pbar:
-            for batch_idx, batch in enumerate(self.train_loader):
-                # Prepare batch data
-                pixel_values, labels = self._prepare_batch(batch)
-
-                # Forward pass
-                outputs = self.model(pixel_values=pixel_values, labels=labels)
-                loss = outputs.loss
-                running_loss += loss.item()
-
-                # Backward pass and optimization
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
-
-                # Update metrics and log bounding boxes
-                batch_size = pixel_values.shape[0]
-                pred_boxes = outputs.pred_boxes  # Predicted boxes from the model
-
-                for i in range(batch_size):
-                    pred_boxes_i = pred_boxes[i].detach().cpu()
-                    gt_boxes_i = labels[i]["boxes"].cpu()  # Ground truth boxes from the dataset
-
-                    # Update metrics
-                    metrics_calculator.update(pred_boxes_i, gt_boxes_i)
-
-                    # Log bounding boxes for inspection
-                    print(f"\n# Batch {batch_idx}, Sample {i}")
-                    print(f"# Ground Truth Boxes (GT): {gt_boxes_i.tolist()}")
-                    print(f"# Predicted Boxes (Pred): {pred_boxes_i.tolist()}\n")
-
-                # Compute batch metrics
-                precision, recall, mIoU = metrics_calculator.compute_metrics()
-
-                # Log progress
-                if batch_idx % 10 == 0:
-                    logger.info(f"Batch {batch_idx+1}/{len(self.train_loader)} - Loss: {loss.item():.4f}, "
-                                f"Precision: {precision:.4f}, Recall: {recall:.4f}, mIoU: {mIoU:.4f}")
-
-                pbar.set_postfix(loss=running_loss / (batch_idx + 1))
-                pbar.update(1)
-
-        # Compute epoch metrics
-        avg_loss = running_loss / len(self.train_loader)
-        precision, recall, mIoU = metrics_calculator.compute_metrics()
-
-        logger.info(f"Epoch [{epoch+1}/{self.num_epochs}], "
-                    f"Loss: {avg_loss:.4f}, Precision: {precision:.4f}, "
-                    f"Recall: {recall:.4f}, mIoU: {mIoU:.4f}")
-
-        return avg_loss, precision, recall, mIoU
-
-
-    def validate_epoch(self, epoch):
-        self.model.eval()
-        val_loss = 0.0
-        metrics_calculator = MetricsCalculator()
-
-        with torch.no_grad():
-            with tqdm(total=len(self.val_loader), desc=f"Epoch {epoch+1}/{self.num_epochs} - Validation") as pbar:
-                for batch_idx, batch in enumerate(self.val_loader):
-                    # Prepare batch data
-                    pixel_values, labels = self._prepare_batch(batch)
-
-                    # Forward pass
-                    outputs = self.model(pixel_values=pixel_values, labels=labels)
-                    val_loss += outputs.loss.item()
-
-                    # Update metrics
-                    batch_size = pixel_values.shape[0]
-                    pred_boxes = outputs.pred_boxes
-
-                    for i in range(batch_size):
-                        pred_boxes_i = pred_boxes[i].cpu()
-                        if isinstance(labels, list):
-                            labels_i = labels[i]
-                            gt_boxes_i = labels_i['boxes'].cpu()
-                        else:
-                            gt_boxes_i = labels['boxes'][i].cpu()
-
-                        metrics_calculator.update(pred_boxes_i, gt_boxes_i)
-
-                    pbar.set_postfix(val_loss=val_loss / (batch_idx + 1))
-                    pbar.update(1)
-
-        # Compute epoch metrics
-        avg_loss = val_loss / len(self.val_loader)
-        precision, recall, mIoU = metrics_calculator.compute_metrics()
-
-        logger.info(f"Epoch [{epoch+1}/{self.num_epochs}], "
-                   f"Validation Loss: {avg_loss:.4f}, Precision: {precision:.4f}, "
-                   f"Recall: {recall:.4f}, mIoU: {mIoU:.4f}")
-
-        return avg_loss, precision, recall, mIoU
-        
-class COCOCustomDataset(Dataset):
-    def __init__(self, annotation_file, images_dir, processor):
-        self.processor = processor
-        with open(annotation_file, 'r') as f:
-            data = json.load(f)
-        self.image_files = []
-        self.bboxes = []
-        self.labels = []
-
-        # Map image IDs to filenames
-        id_to_filename = {img['id']: img['file_name'] for img in data['images']}
-        anns_per_image = {}
-        for ann in data['annotations']:
-            image_id = ann['image_id']
-            if image_id not in anns_per_image:
-                anns_per_image[image_id] = []
-            anns_per_image[image_id].append(ann)
-
-        for image_id, anns in anns_per_image.items():
-            file_name = id_to_filename[image_id]
-            image_path = os.path.join(images_dir, file_name)
-            if not os.path.exists(image_path):
-                continue
-
-            self.image_files.append(image_path)
-            bboxes = [ann['bbox'] for ann in anns]
-            labels = [1 for _ in anns]  # Single class
-            self.bboxes.append(bboxes)
-            self.labels.append(labels)
-
-    def __len__(self):
-        return len(self.image_files)
-
-    def __getitem__(self, idx):
-        image = Image.open(self.image_files[idx]).convert("RGB")
-        bboxes = self.bboxes[idx]  # List of [x_min, y_min, width, height]
-        labels = self.labels[idx]
-    
-        # Calculate area
-        areas = [bbox[2] * bbox[3] for bbox in bboxes]
-    
-        # COCO-format annotations
-        annotations_list = []
-        for bbox, label, area in zip(bboxes, labels, areas):
-            annotations_list.append({
-                "bbox": bbox,
-                "category_id": label,
-                "area": area,
-                "iscrowd": 0
-            })
-    
-        # Prepare annotations dict with 'image_id' and 'annotations'
-        annotations_dict = {
-            "image_id": idx,  # Include image_id
-            "annotations": annotations_list
-        }
-    
-        # Prepare inputs using the processor
-        encoding = self.processor(images=image, annotations=annotations_dict, return_tensors="pt")
-        pixel_values = encoding['pixel_values'].squeeze(0)  # Remove batch dimension
-        target = encoding['labels'][0]  # Get the labels for this image
-    
-        return pixel_values, target
-
-def collate_fn(batch):
-    pixel_values = torch.stack([item[0] for item in batch])
-    labels = [item[1] for item in batch]  # Keep labels as a list of dicts
-    return {'pixel_values': pixel_values, 'labels': labels}
+import torch.distributed as dist
+from mmengine import Config, DictAction
+from mmengine.dist import get_dist_info, init_dist
+from mmengine.utils import get_git_hash
+
+from mmdet import __version__
+from mmdet.apis import init_random_seed, set_random_seed, train_detector
+from mmdet.datasets import build_dataset
+from mmdet.models import build_detector
+from mmdet.utils import (collect_env, get_device, get_root_logger,
+                         replace_cfg_vals, setup_multi_processes,
+                         update_data_root)
+from projects import *
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Train a detector')
+    parser.add_argument('config', help='train config file path')
+    parser.add_argument('--work-dir', help='the dir to save logs and models')
+    parser.add_argument('--version', help='the dir to save logs and models')
+    parser.add_argument(
+        '--resume-from', help='the checkpoint file to resume from')
+    parser.add_argument(
+        '--auto-resume',
+        action='store_true',
+        help='resume from the latest checkpoint automatically')
+    parser.add_argument(
+        '--no-validate',
+        action='store_true',
+        help='whether not to evaluate the checkpoint during training')
+    group_gpus = parser.add_mutually_exclusive_group()
+    group_gpus.add_argument(
+        '--gpus',
+        type=int,
+        help='(Deprecated, please use --gpu-id) number of gpus to use '
+        '(only applicable to non-distributed training)')
+    group_gpus.add_argument(
+        '--gpu-ids',
+        type=int,
+        nargs='+',
+        help='(Deprecated, please use --gpu-id) ids of gpus to use '
+        '(only applicable to non-distributed training)')
+    group_gpus.add_argument(
+        '--gpu-id',
+        type=int,
+        default=0,
+        help='id of gpu to use '
+        '(only applicable to non-distributed training)')
+    parser.add_argument('--seed', type=int, default=None, help='random seed')
+    parser.add_argument(
+        '--diff-seed',
+        action='store_true',
+        help='Whether or not set different seeds for different ranks')
+    parser.add_argument(
+        '--deterministic',
+        action='store_true',
+        help='whether to set deterministic options for CUDNN backend.')
+    parser.add_argument(
+        '--options',
+        nargs='+',
+        action=DictAction,
+        help='override some settings in the used config, the key-value pair '
+        'in xxx=yyy format will be merged into config file (deprecate), '
+        'change to --cfg-options instead.')
+    parser.add_argument(
+        '--cfg-options',
+        nargs='+',
+        action=DictAction,
+        help='override some settings in the used config, the key-value pair '
+        'in xxx=yyy format will be merged into config file. If the value to '
+        'be overwritten is a list, it should be like key="[a,b]" or key=a,b '
+        'It also allows nested list/tuple values, e.g. key="[(a,b),(c,d)]" '
+        'Note that the quotation marks are necessary and that no white space '
+        'is allowed.')
+    parser.add_argument(
+        '--launcher',
+        choices=['none', 'pytorch', 'slurm', 'mpi'],
+        default='none',
+        help='job launcher')
+    parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument(
+        '--auto-scale-lr',
+        action='store_true',
+        help='enable automatically scaling LR.')
+    args = parser.parse_args()
+    if 'LOCAL_RANK' not in os.environ:
+        os.environ['LOCAL_RANK'] = str(args.local_rank)
+
+    if args.options and args.cfg_options:
+        raise ValueError(
+            '--options and --cfg-options cannot be both '
+            'specified, --options is deprecated in favor of --cfg-options')
+    if args.options:
+        warnings.warn('--options is deprecated in favor of --cfg-options')
+        args.cfg_options = args.options
+
+    return args
 
 
 def main():
-    # Paths
-    train_images_dir = 'data/train'
-    train_annotation_file = 'data/train/train_annotations.coco.json'
-    valid_images_dir = 'data/valid'
-    valid_annotation_file = 'data/valid/valid_annotations.coco.json'
+    args = parse_args()
 
-    # Load model and processor
-    model, processor = create_detr_model()
-    model.train()
+    cfg = Config.fromfile(args.config)
 
-    # Dataset and DataLoader
-    train_dataset = COCOCustomDataset(train_annotation_file, train_images_dir, processor)
-    valid_dataset = COCOCustomDataset(valid_annotation_file, valid_images_dir, processor)
+    # replace the ${key} with the value of cfg.key
+    cfg = replace_cfg_vals(cfg)
 
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, collate_fn=collate_fn)
-    valid_loader = DataLoader(valid_dataset, batch_size=4, collate_fn=collate_fn)
+    # update data root according to MMDET_DATASETS
+    update_data_root(cfg)
 
-    # Training parameters
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-    num_epochs = 10
+    if args.cfg_options is not None:
+        cfg.merge_from_dict(args.cfg_options)
 
-    # Create Trainer and start training
-    trainer = Trainer(model, processor, train_loader, valid_loader, optimizer, num_epochs)
-    trainer.train()
+    if args.auto_scale_lr:
+        if 'auto_scale_lr' in cfg and \
+                'enable' in cfg.auto_scale_lr and \
+                'base_batch_size' in cfg.auto_scale_lr:
+            cfg.auto_scale_lr.enable = True
+        else:
+            warnings.warn('Can not find "auto_scale_lr" or '
+                          '"auto_scale_lr.enable" or '
+                          '"auto_scale_lr.base_batch_size" in your'
+                          ' configuration file. Please update all the '
+                          'configuration files to mmdet >= 2.24.1.')
+
+    # set multi-process settings
+    setup_multi_processes(cfg)
+
+    # set cudnn_benchmark
+    if cfg.get('cudnn_benchmark', False):
+        torch.backends.cudnn.benchmark = True
+
+    # work_dir is determined in this priority: CLI > segment in file > filename
+    if args.work_dir is not None:
+        # update configs according to CLI args if args.work_dir is not None
+        cfg.work_dir = args.work_dir
+    elif cfg.get('work_dir', None) is None:
+        # use config filename as default work_dir if cfg.work_dir is None
+        cfg.work_dir = osp.join('./work_dirs',
+                                osp.splitext(osp.basename(args.config))[0])
+
+    if args.resume_from is not None:
+        cfg.resume_from = args.resume_from
+    cfg.auto_resume = args.auto_resume
+    if args.gpus is not None:
+        cfg.gpu_ids = range(1)
+        warnings.warn('`--gpus` is deprecated because we only support '
+                      'single GPU mode in non-distributed training. '
+                      'Use `gpus=1` now.')
+    if args.gpu_ids is not None:
+        cfg.gpu_ids = args.gpu_ids[0:1]
+        warnings.warn('`--gpu-ids` is deprecated, please use `--gpu-id`. '
+                      'Because we only support single GPU mode in '
+                      'non-distributed training. Use the first GPU '
+                      'in `gpu_ids` now.')
+    if args.gpus is None and args.gpu_ids is None:
+        cfg.gpu_ids = [args.gpu_id]
+
+    # init distributed env first, since logger depends on the dist info.
+    if args.launcher == 'none':
+        distributed = False
+    else:
+        distributed = True
+        init_dist(args.launcher, **cfg.dist_params)
+        # re-set gpu_ids with distributed training mode
+        _, world_size = get_dist_info()
+        cfg.gpu_ids = range(world_size)
+
+    # create work_dir
+    mmcv.mkdir_or_exist(osp.abspath(cfg.work_dir))
+    # dump config
+    cfg.dump(osp.join(cfg.work_dir, osp.basename(args.config)))
+    # init the logger before other steps
+    timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+    log_file = osp.join(cfg.work_dir, f'{timestamp}.log')
+    logger = get_root_logger(log_file=log_file, log_level=cfg.log_level)
+
+    # init the meta dict to record some important information such as
+    # environment info and seed, which will be logged
+    meta = dict()
+    # log env info
+    env_info_dict = collect_env()
+    env_info = '\n'.join([(f'{k}: {v}') for k, v in env_info_dict.items()])
+    dash_line = '-' * 60 + '\n'
+    logger.info('Environment info:\n' + dash_line + env_info + '\n' +
+                dash_line)
+    meta['env_info'] = env_info
+    meta['config'] = cfg.pretty_text
+    # log some basic info
+    logger.info(f'Distributed training: {distributed}')
+    logger.info(f'Config:\n{cfg.pretty_text}')
+
+    cfg.device = get_device()
+    # set random seeds
+    seed = init_random_seed(args.seed, device=cfg.device)
+    seed = seed + dist.get_rank() if args.diff_seed else seed
+    logger.info(f'Set random seed to {seed}, '
+                f'deterministic: {args.deterministic}')
+    set_random_seed(seed, deterministic=args.deterministic)
+    cfg.seed = seed
+    meta['seed'] = seed
+    meta['exp_name'] = osp.basename(args.config)
+
+    model = build_detector(
+        cfg.model,
+        train_cfg=cfg.get('train_cfg'),
+        test_cfg=cfg.get('test_cfg'))
+    model.init_weights()
+
+    datasets = [build_dataset(cfg.data.train)]
+    if len(cfg.workflow) == 2:
+        assert 'val' in [mode for (mode, _) in cfg.workflow]
+        val_dataset = copy.deepcopy(cfg.data.val)
+        val_dataset.pipeline = cfg.data.train.get(
+            'pipeline', cfg.data.train.get('pipeline'))
+        datasets.append(build_dataset(val_dataset))
+    if cfg.checkpoint_config is not None:
+        # save mmdet version, config file content and class names in
+        # checkpoints as meta data
+        cfg.checkpoint_config.meta = dict(
+            mmdet_version=__version__ + get_git_hash()[:7],
+            CLASSES=datasets[0].CLASSES)
+    # add an attribute for visualization convenience
+    model.CLASSES = datasets[0].CLASSES
+    train_detector(
+        model,
+        datasets,
+        cfg,
+        distributed=distributed,
+        validate=(not args.no_validate),
+        timestamp=timestamp,
+        meta=meta)
 
 
 if __name__ == '__main__':
