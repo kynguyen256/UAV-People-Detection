@@ -1,8 +1,5 @@
 #!/bin/bash
 
-# Navigate to the directory
-cd /app
-
 # Define the working directory
 UAV_WORK_DIR="uav_work_dir"
 
