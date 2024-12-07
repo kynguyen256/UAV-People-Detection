@@ -41,7 +41,7 @@ def check_coco_data():
     """
 
     # Directories to check
-    directories = ['data/train', 'data/valid', 'data/test']
+    directories = ['data/train', 'data/valid', 'data/test','IR/train','IR/valid','IR/test']
 
     for directory in directories:
         print(f"Checking directory: {directory}")

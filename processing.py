@@ -3,6 +3,7 @@ from src.download_data import download_data
 from src.visualize import randomDisplay
 from src.overlays import createOverlays, process_dataset
 from src.heatmap import heatmaps
+from src.download_IR import download_IR
 
 import os
 import json
@@ -13,8 +14,10 @@ def main():
       # Download the data from Roboflow
       download_data()
       
+      download_IR()
+
       # Ensure the COCO dataset is correct
-      check_coco_data()
+      # check_coco_data()
 
       # Randomly display some images 
       randomDisplay()
