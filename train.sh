@@ -11,7 +11,7 @@ export CUDA_HOME=/usr/local/cuda
 
 # Always train on one GPU with the specific config
 echo "Starting training..."
-if ! python3 train.py configs/uav_people/co_dino_5scale_r50_1x.py --work-dir "$UAV_WORK_DIR"; then
+if ! training/bin/python train.py configs/uav_people/co_dino_5scale_r50_1x.py --work-dir "$UAV_WORK_DIR"; then
   echo "Error: Python script execution failed."
   kill $PID1
   exit 1
