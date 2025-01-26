@@ -1,4 +1,4 @@
-# base ----------------------------------------
+# Base
 Cython
 opencv-python>=4.1.2
 Pillow
@@ -6,27 +6,28 @@ PyYAML>=5.3.1
 tqdm>=4.41.0
 imageio
 numpy-stl
-colorlog
 
-# ml ------------------------------------------
-shapely==1.8.1 
+# Machine Learning
+shapely==1.8.1
 timm==0.6.11
 mmdet==2.28.1
 mmengine
 
-# logging -------------------------------------
+# Logging
 wandb
 nvitop
 colorlog
 
-# plotting ------------------------------------
+# Plotting
 seaborn>=0.11.0
 pandas
 
-# utils ---------------------------------------
+# Utilities
 python-dotenv==0.19.0
 requests==2.26.0
-boto3==1.18.62
+boto3==1.35.94
+botocore==1.35.94
+s3transfer==0.10.0
 termcolor
 yacs
 scikit-learn
