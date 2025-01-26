@@ -6,22 +6,22 @@ _base_ = [
 # Model Settings
 num_dec_layer = 6
 lambda_2 = 2.0
-num_classes = 1
+num_classes = 14
 
 # Compute Settings
 num_gpus = 1
-samples_per_gpu = 1
+samples_per_gpu = 2
 workers_per_gpu = 2*samples_per_gpu
 base_batch_size = num_gpus*samples_per_gpu # base_batch_size = (8 GPUs) x (2 samples per GPU)
 
 # Evaluation Settings
-max_iters = 100000
+max_iters = 200000
 max_checkpoints = 3
 
 # Interval Settings
-log_interval = 1
-wandb_interval = 9
-evaluation_interval = 149
+log_interval = 10
+wandb_interval = 99
+evaluation_interval = 1499
 checkpoint_interval = int(evaluation_interval/max_checkpoints)
 
 # Specify dataset related settings
@@ -333,9 +333,9 @@ log_config = dict(
         #         by_epoch=False, 
         #         num_eval_images=0, 
         #         init_kwargs={
-        #             #'entity': "nexterarobotics",
-        #             'project': "UAV People", 
-        #             'name': "co_dino_5scale_r50_1x_v1.0"},
+        #             'entity': "nexterarobotics",
+        #             'project': "Safety_Tracking_V1", 
+        #             'name': "co_dino_5scale_r50_1x_ppe_V1.1"},
         #     ),
     ])
 
@@ -365,3 +365,4 @@ lr_config = dict(policy='step', step=[11])
 # USER SHOULD NOT CHANGE ITS VALUES.
 # base_batch_size = (8 GPUs) x (2 samples per GPU)
 auto_scale_lr = dict(base_batch_size=base_batch_size)
+
