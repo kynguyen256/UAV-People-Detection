@@ -325,18 +325,18 @@ test_pipeline = [
 log_config = dict(
     interval=log_interval,
     hooks=[
-        dict(
-                type='TextLoggerHook', 
-                by_epoch=False),
         # dict(
-        #         type='MMDetWandbHook',
-        #         by_epoch=False, 
-        #         num_eval_images=0, 
-        #         init_kwargs={
-        #             'entity': "nexterarobotics",
-        #             'project': "Safety_Tracking_V1", 
-        #             'name': "co_dino_5scale_r50_1x_ppe_V1.1"},
-        #     ),
+        #         type='TextLoggerHook', 
+        #         by_epoch=False),
+        dict(
+                type='MMDetWandbHook',
+                by_epoch=False, 
+                num_eval_images=0, 
+                init_kwargs={
+                    'entity': "nexterarobotics",
+                    'project': "UAV-Detection", 
+                    'name': "co_dino_5scale_r50_1x_uav_V1.1"},
+            ),
     ])
 
 runner = dict(type='IterBasedRunner', max_iters=max_iters)
