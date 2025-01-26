@@ -58,36 +58,44 @@ def process_dataset():
     """
     Processes the dataset to keep only 'humans' class and saves the updated annotations.
     """
-    # Define dataset splits
-    splits = ['train', 'valid', 'test']
-    for split in splits:
-        input_annotation_path = f'data/{split}/_annotations.coco.json'
-        output_annotation_path = f'data/{split}/{split}_annotations.coco.json'
+    # Define dataset paths and splits
+    datasets = {
+        "data": ['train', 'valid', 'test'],
+        "IR": ['train', 'valid']
+    }
 
-        # Load annotations
-        annotations = load_annotations(input_annotation_path)
+    for dataset, splits in datasets.items():
+        for split in splits:
+            input_annotation_path = f'{dataset}/{split}/_annotations.coco.json'
+            output_annotation_path = f'{dataset}/{split}/{split}_annotations.coco.json'
 
-        # Print class names before filtering
-        categories = annotations['categories']
-        class_names = [category['name'] for category in categories]
-        print(f"Class names in {split} set before filtering:")
-        print("Class names:", class_names)
+            # Load annotations
+            annotations = load_annotations(input_annotation_path)
 
-        # Filter annotations to keep only 'humans' class
-        filtered_annotations = filter_humans_annotations(annotations)
-        if filtered_annotations is None:
-            print(f"Skipping {split} set due to missing 'humans' class.")
-            continue
+            # Print class names before filtering
+            print_class_names(annotations, split, "before")
 
-        # Print class names after filtering
-        categories = filtered_annotations['categories']
-        class_names = [category['name'] for category in categories]
-        print(f"Class names in {split} set after filtering:")
-        print("Class names:", class_names)
+            # Filter annotations to keep only 'humans' class
+            filtered_annotations = filter_humans_annotations(annotations)
+            if filtered_annotations is None:
+                print(f"Skipping {split} set in {dataset} due to missing 'humans' class.")
+                continue
 
-        # Save updated annotations with new filenames
-        save_annotations(filtered_annotations, output_annotation_path)
-        print(f"Saved filtered annotations to {output_annotation_path}\n")
+            # Print class names after filtering
+            print_class_names(filtered_annotations, split, "after")
+
+            # Save updated annotations
+            save_annotations(filtered_annotations, output_annotation_path)
+            print(f"Saved filtered annotations to {output_annotation_path}\n")
+
+def print_class_names(annotations, split, stage):
+    """
+    Prints the class names in the annotations for a specific stage (before/after filtering).
+    """
+    categories = annotations['categories']
+    class_names = [category['name'] for category in categories]
+    print(f"Class names in {split} set {stage} filtering:")
+    print("Class names:", class_names)
 
 def overlay_bounding_boxes(image_dir, bbox_data, image_id_to_file, output_dir, category_id_to_name, color=(0, 255, 0), thickness=2):
     """
