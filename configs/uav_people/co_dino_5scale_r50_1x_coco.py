@@ -6,7 +6,7 @@ _base_ = [
 # Model Settings
 num_dec_layer = 6
 lambda_2 = 2.0
-num_classes = 14
+num_classes = 1
 
 # Compute Settings
 num_gpus = 1
@@ -64,7 +64,7 @@ model = dict(
     query_head=dict(
         type='CoDINOHead',
         num_query=900,
-        num_classes=80,
+        num_classes=num_classes,
         num_feature_levels=5,
         in_channels=2048,
         sync_cls_avg_factor=True,
@@ -151,7 +151,7 @@ model = dict(
             loss_bbox=dict(type='GIoULoss', loss_weight=10.0*num_dec_layer*lambda_2)))],
     bbox_head=[dict(
         type='CoATSSHead',
-        num_classes=80,
+        num_classes=num_classes,
         in_channels=256,
         stacked_convs=1,
         feat_channels=256,
