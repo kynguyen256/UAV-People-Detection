@@ -248,9 +248,6 @@ model = dict(
             max_per_img=100),
     ])
 
-# Enable FP16 mixed precision training to reduce memory usage
-fp16 = dict(loss_scale=dict(init_scale=512))
-
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 
@@ -350,3 +347,6 @@ lr_config = dict(policy='step', step=[11])
 runner = dict(type='EpochBasedRunner', max_epochs=12)
 
 auto_scale_lr = dict(base_batch_size=16)
+
+# Enable FP16 mixed precision training to reduce memory usage
+fp16 = dict(loss_scale=dict(init_scale=512))
