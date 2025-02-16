@@ -12,7 +12,7 @@ import glob
 def main():
       
       # Download the data from Roboflow
-      download_data()
+      download_RGB()
       download_IR()
       
       
