@@ -318,14 +318,17 @@ log_config = dict(
     interval=log_interval,
     hooks=[
         dict(
-            type='MMDetWandbHook',
-            by_epoch=False,
-            num_eval_images=0,
-            init_kwargs={
-                'entity': "nexterarobotics",
-                'project': "UAV-Detection",
-                'name': "co_dino_5scale_r50_1x_uav_V1.1"},
-        ),
+                type='TextLoggerHook', 
+                by_epoch=False),
+        # dict(
+        #         type='MMDetWandbHook',
+        #         by_epoch=False, 
+        #         num_eval_images=0, 
+        #         init_kwargs={
+        #             'entity': "nexterarobotics",
+        #             'project': "UAV-Detection", 
+        #             'name': "co_dino_5scale_r50_1x_uav_V1.1"},
+        #     ),
     ])
 
 data = dict(
