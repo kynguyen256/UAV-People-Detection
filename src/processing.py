@@ -33,19 +33,25 @@ def check_coco_data():
     """
     Checks all JSON files in a given directory (and its subdirectories) for validity.
     
-    Args:
-    - root_dir (str): The root directory to search for JSON files.
-    
     Raises:
     - ValueError: If the directory does not exist or no JSON files are found.
     """
 
-    # Directories to check
-    directories = ['data/train', 'data/valid', 'data/test', 'IR/train', 'IR/valid']
+    # Parent directory
+    parent_dir = "data"
+
+    # Directories to check (nested inside data/)
+    directories = ['RGB/train', 'RGB/valid', 'RGB/test', 'IR/train', 'IR/valid']
 
     for directory in directories:
-        print(f"Checking directory: {directory}")
-        check_coco(directory)
+        full_path = os.path.join(parent_dir, directory)  # Ensure the correct full path
+        print(f"Checking directory: {full_path}")
+        check_coco(full_path)
+
+# Call the function
+if __name__ == "__main__":
+    check_coco_data()
+
 
 def check_coco(root_dir):
     
