@@ -326,8 +326,8 @@ log_config = dict(
         #         num_eval_images=0, 
         #         init_kwargs={
         #             'entity': "nexterarobotics",
-        #             'project': "UAV-Detection", 
-        #             'name': "co_dino_5scale_r50_1x_uav_V1.1"},
+        #             'project': "Safety_Tracking_V1", 
+        #             'name': "co_dino_5scale_r50_1x_ppe_V1.1"},
         #     ),
     ])
 
@@ -346,10 +346,12 @@ optimizer = dict(
 
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 
+# learning policy
 lr_config = dict(policy='step', step=[11])
-runner = dict(type='EpochBasedRunner', max_epochs=12)
 
-auto_scale_lr = dict(base_batch_size=16)
+runner = dict(type='IterBasedRunner', max_epochs=12)runner = dict(type='IterBasedRunner', max_iters=max_iters)
+
+auto_scale_lr = dict(base_batch_size=base_batch_size)
 
 # # Enable FP16 mixed precision training to reduce memory usage
 # fp16 = dict(loss_scale=dict(init_scale=512))
