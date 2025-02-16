@@ -1,7 +1,7 @@
 import os
 import os
 
-def download_data():
+def download_RGB():
     # Define the parent data directory
     parent_dir = "data"
     if not os.path.exists(parent_dir):
@@ -38,4 +38,5 @@ def download_data():
         print("Dataset already exists with 'train', 'test', and 'valid' folders.")
 
 # Call the function to download the new dataset
-download_data()
+if __name__ == "__main__":
+    download_RGB()
