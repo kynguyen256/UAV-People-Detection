@@ -348,5 +348,5 @@ runner = dict(type='EpochBasedRunner', max_epochs=12)
 
 auto_scale_lr = dict(base_batch_size=16)
 
-# Enable FP16 mixed precision training to reduce memory usage
-fp16 = dict(loss_scale=dict(init_scale=512))
+# # Enable FP16 mixed precision training to reduce memory usage
+# fp16 = dict(loss_scale=dict(init_scale=512))
