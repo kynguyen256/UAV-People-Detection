@@ -22,7 +22,7 @@ from .custom import CustomDataset
 @DATASETS.register_module()
 class UAV_People(CustomDataset):
 
-    CLASSES = ('person')
+    CLASSES = ('person',)
 
     PALETTE = [(220, 20, 60)]
 
