@@ -8,11 +8,11 @@ num_dec_layer = 6
 lambda_2 = 2.0
 num_classes = 1
 
-# Compute Settings
+# Compute Settings (Reduced batch size to lower memory usage)
 num_gpus = 1
-samples_per_gpu = 2
-workers_per_gpu = 2*samples_per_gpu
-base_batch_size = num_gpus*samples_per_gpu # base_batch_size = (8 GPUs) x (2 samples per GPU)
+samples_per_gpu = 1  # Changed from 2 to 1
+workers_per_gpu = 2 * samples_per_gpu
+base_batch_size = num_gpus * samples_per_gpu
 
 # Evaluation Settings
 max_iters = 200000
@@ -22,7 +22,7 @@ max_checkpoints = 3
 log_interval = 10
 wandb_interval = 99
 evaluation_interval = 1499
-checkpoint_interval = int(evaluation_interval/max_checkpoints)
+checkpoint_interval = int(evaluation_interval / max_checkpoints)
 
 model = dict(
     type='CoDETR',
@@ -59,11 +59,11 @@ model = dict(
             target_means=[.0, .0, .0, .0],
             target_stds=[1.0, 1.0, 1.0, 1.0]),
         loss_cls=dict(
-            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0*num_dec_layer*lambda_2),
-        loss_bbox=dict(type='L1Loss', loss_weight=1.0*num_dec_layer*lambda_2)),
+            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0 * num_dec_layer * lambda_2),
+        loss_bbox=dict(type='L1Loss', loss_weight=1.0 * num_dec_layer * lambda_2)),
     query_head=dict(
         type='CoDINOHead',
-        num_query=900,
+        num_query=900,  # Optionally, reduce this if further memory reduction is needed
         num_classes=num_classes,
         num_feature_levels=5,
         in_channels=2048,
@@ -73,7 +73,7 @@ model = dict(
         mixed_selection=True,
         dn_cfg=dict(
             type='CdnQueryGenerator',
-            noise_scale=dict(label=0.5, box=1.0),  # 0.5, 0.4 for DN-DETR
+            noise_scale=dict(label=0.5, box=1.0),
             group_cfg=dict(dynamic=True, num_groups=None, num_dn_queries=100)),
         transformer=dict(
             type='CoDinoTransformer',
@@ -84,7 +84,7 @@ model = dict(
             encoder=dict(
                 type='DetrTransformerEncoder',
                 num_layers=6,
-                with_cp=4, # number of layers that use checkpoint
+                with_cp=4,  # Using checkpointing to save memory
                 transformerlayers=dict(
                     type='BaseTransformerLayer',
                     attn_cfgs=dict(
@@ -139,7 +139,7 @@ model = dict(
             in_channels=256,
             fc_out_channels=1024,
             roi_feat_size=7,
-            num_classes=num_classes,
+            num_classes=num_classes,  # Now matches the dataset (1 class)
             bbox_coder=dict(
                 type='DeltaXYWHBBoxCoder',
                 target_means=[0., 0., 0., 0.],
@@ -147,8 +147,8 @@ model = dict(
             reg_class_agnostic=False,
             reg_decoded_bbox=True,
             loss_cls=dict(
-                type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0*num_dec_layer*lambda_2),
-            loss_bbox=dict(type='GIoULoss', loss_weight=10.0*num_dec_layer*lambda_2)))],
+                type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0 * num_dec_layer * lambda_2),
+            loss_bbox=dict(type='GIoULoss', loss_weight=10.0 * num_dec_layer * lambda_2)))],
     bbox_head=[dict(
         type='CoATSSHead',
         num_classes=num_classes,
@@ -170,11 +170,11 @@ model = dict(
             use_sigmoid=True,
             gamma=2.0,
             alpha=0.25,
-            loss_weight=1.0*num_dec_layer*lambda_2),
-        loss_bbox=dict(type='GIoULoss', loss_weight=2.0*num_dec_layer*lambda_2),
+            loss_weight=1.0 * num_dec_layer * lambda_2),
+        loss_bbox=dict(type='GIoULoss', loss_weight=2.0 * num_dec_layer * lambda_2),
         loss_centerness=dict(
-            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0*num_dec_layer*lambda_2)),],
-    # model training and testing settings
+            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0 * num_dec_layer * lambda_2)),],
+    # Model training and testing settings
     train_cfg=[
         dict(
             assigner=dict(
@@ -246,15 +246,15 @@ model = dict(
             score_thr=0.0,
             nms=dict(type='nms', iou_threshold=0.6),
             max_per_img=100),
-        # soft-nms is also supported for rcnn testing
-        # e.g., nms=dict(type='soft_nms', iou_threshold=0.5, min_score=0.05)
     ])
-#find_unused_parameters = True
-#fp16 = dict(loss_scale=dict(init_scale=512))
+
+# Enable FP16 mixed precision training to reduce memory usage
+fp16 = dict(loss_scale=dict(init_scale=512))
+
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
-# train_pipeline, NOTE the img_scale and the Pad's size_divisor is different
-# from the default setting in mmdet.
+
+# Train Pipeline (unchanged; adjust image scales here if lower resolutions are desired)
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
@@ -275,8 +275,6 @@ train_pipeline = [
             [
                 dict(
                     type='Resize',
-                    # The radio of all image in train dataset < 7
-                    # follow the original impl
                     img_scale=[(400, 4200), (500, 4200), (600, 4200)],
                     multiscale_mode='value',
                     keep_ratio=True),
@@ -301,9 +299,8 @@ train_pipeline = [
     dict(type='DefaultFormatBundle'),
     dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
 ]
-# test_pipeline, NOTE the Pad's size_divisor is different from the default
-# setting (size_divisor=32). While there is little effect on the performance
-# whether we use the default setting or use size_divisor=1.
+
+# Test Pipeline
 test_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(
@@ -323,41 +320,33 @@ test_pipeline = [
 log_config = dict(
     interval=log_interval,
     hooks=[
-        # dict(
-        #         type='TextLoggerHook', 
-        #         by_epoch=False),
         dict(
-                type='MMDetWandbHook',
-                by_epoch=False, 
-                num_eval_images=0, 
-                init_kwargs={
-                    'entity': "nexterarobotics",
-                    'project': "UAV-Detection", 
-                    'name': "co_dino_5scale_r50_1x_uav_V1.1"},
-            ),
+            type='MMDetWandbHook',
+            by_epoch=False,
+            num_eval_images=0,
+            init_kwargs={
+                'entity': "nexterarobotics",
+                'project': "UAV-Detection",
+                'name': "co_dino_5scale_r50_1x_uav_V1.1"},
+        ),
     ])
 
 data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=2,
+    samples_per_gpu=samples_per_gpu,
+    workers_per_gpu=workers_per_gpu,
     train=dict(filter_empty_gt=False, pipeline=train_pipeline),
     val=dict(pipeline=test_pipeline),
     test=dict(pipeline=test_pipeline))
 
-# optimizer
 optimizer = dict(
     type='AdamW',
     lr=2e-4,
     weight_decay=0.0001,
-    # custom_keys of sampling_offsets and reference_points in DeformDETR
     paramwise_cfg=dict(custom_keys={'backbone': dict(lr_mult=0.1)}))
 
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
-# learning policy
+
 lr_config = dict(policy='step', step=[11])
 runner = dict(type='EpochBasedRunner', max_epochs=12)
 
-# NOTE: `auto_scale_lr` is for automatically scaling LR,
-# USER SHOULD NOT CHANGE ITS VALUES.
-# base_batch_size = (8 GPUs) x (2 samples per GPU)
 auto_scale_lr = dict(base_batch_size=16)
