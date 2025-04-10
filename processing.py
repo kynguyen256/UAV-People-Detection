@@ -15,7 +15,6 @@ def main():
       download_RGB()
       download_IR()
       
-      
       # Ensure the COCO dataset is correct
       check_coco_data()
 
