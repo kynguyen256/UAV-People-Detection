@@ -1,5 +1,5 @@
 dataset_type = 'UAV_People'
-data_root = 'data/'
+data_root = 'data/RGB/'
 img_norm_cfg = dict(
     mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
 train_pipeline = [
@@ -76,8 +76,8 @@ data = dict(
     workers_per_gpu=2,
     train=dict(
         type='UAV_People',
-        ann_file='data/train/train_annotations.coco.json',
-        img_prefix='data/train/',
+        ann_file='data/RGB/train/_annotations.coco.json',
+        img_prefix='data/RGB/train/',
         pipeline=[
             dict(type='LoadImageFromFile'),
             dict(type='LoadAnnotations', with_bbox=True),
@@ -135,8 +135,8 @@ data = dict(
         filter_empty_gt=False),
     val=dict(
         type='UAV_People',
-        ann_file='data/test/test_annotations.coco.json',
-        img_prefix='data/test/',
+        ann_file='data/RGB/test/_annotations.coco.json',
+        img_prefix='data/RGB/test/',
         pipeline=[
             dict(type='LoadImageFromFile'),
             dict(
@@ -158,8 +158,8 @@ data = dict(
         ]),
     test=dict(
         type='UAV_People',
-        ann_file='data/test/test_annotations.coco.json',
-        img_prefix='data/test/',
+        ann_file='data/RGB/test/_annotations.coco.json',
+        img_prefix='data/RGB/test/',
         pipeline=[
             dict(type='LoadImageFromFile'),
             dict(
@@ -179,8 +179,7 @@ data = dict(
                     dict(type='Collect', keys=['img'])
                 ])
         ]))
-evaluation = dict(interval=1, metric='bbox')
-checkpoint_config = dict(interval=1)
+checkpoint_config = dict(interval=499, by_epoch=False, max_keep_ckpts=3)
 log_config = dict(
     interval=10, hooks=[dict(type='TextLoggerHook', by_epoch=False)])
 custom_hooks = [dict(type='NumClassCheckHook')]
@@ -194,7 +193,7 @@ mp_start_method = 'fork'
 auto_scale_lr = dict(enable=False, base_batch_size=1)
 num_dec_layer = 6
 lambda_2 = 2.0
-num_classes = 1
+num_classes = 2
 num_gpus = 1
 samples_per_gpu = 1
 workers_per_gpu = 2
@@ -205,6 +204,9 @@ log_interval = 10
 wandb_interval = 99
 evaluation_interval = 1499
 checkpoint_interval = 499
+runner = dict(type='IterBasedRunner', max_iters=200000)
+evaluation = dict(
+    interval=1499, metric='bbox', save_best='bbox_mAP', by_epoch=False)
 model = dict(
     type='CoDETR',
     backbone=dict(
@@ -245,7 +247,7 @@ model = dict(
     query_head=dict(
         type='CoDINOHead',
         num_query=900,
-        num_classes=1,
+        num_classes=2,
         num_feature_levels=5,
         in_channels=2048,
         sync_cls_avg_factor=True,
@@ -325,7 +327,7 @@ model = dict(
                 in_channels=256,
                 fc_out_channels=1024,
                 roi_feat_size=7,
-                num_classes=1,
+                num_classes=2,
                 bbox_coder=dict(
                     type='DeltaXYWHBBoxCoder',
                     target_means=[0.0, 0.0, 0.0, 0.0],
@@ -341,7 +343,7 @@ model = dict(
     bbox_head=[
         dict(
             type='CoATSSHead',
-            num_classes=1,
+            num_classes=2,
             in_channels=256,
             stacked_convs=1,
             feat_channels=256,
@@ -444,7 +446,6 @@ optimizer = dict(
     paramwise_cfg=dict(custom_keys=dict(backbone=dict(lr_mult=0.1))))
 optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 lr_config = dict(policy='step', step=[11])
-runner = dict(type='IterBasedRunner', max_iters=200000)
 work_dir = 'uav_work_dir'
 auto_resume = False
 gpu_ids = [0]

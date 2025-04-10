@@ -22,9 +22,9 @@ from .custom import CustomDataset
 @DATASETS.register_module()
 class UAV_People(CustomDataset):
 
-    CLASSES = ('person',)
+    CLASSES = ('human_ir', 'human_rgb',)
 
-    PALETTE = [(220, 20, 60)]
+    PALETTE = [(220, 20, 60), (20, 60, 220)]
 
     def load_annotations(self, ann_file):
         """Load annotation from COCO style annotation file.

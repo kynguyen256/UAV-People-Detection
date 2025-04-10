@@ -6,7 +6,7 @@ _base_ = [
 # Model Settings
 num_dec_layer = 6
 lambda_2 = 2.0
-num_classes = 14
+num_classes = 2
 
 # Compute Settings
 num_gpus = 1

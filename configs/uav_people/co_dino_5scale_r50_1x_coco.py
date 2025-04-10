@@ -6,7 +6,7 @@ _base_ = [
 # Model Settings
 num_dec_layer = 6
 lambda_2 = 2.0
-num_classes = 1
+num_classes = 2
 
 # Compute Settings (Reduced batch size to lower memory usage)
 num_gpus = 1
@@ -23,6 +23,11 @@ log_interval = 10
 wandb_interval = 99
 evaluation_interval = 1499
 checkpoint_interval = int(evaluation_interval / max_checkpoints)
+
+runner = dict(type='IterBasedRunner', max_iters=max_iters)
+checkpoint_config = dict(by_epoch=False, interval=checkpoint_interval, max_keep_ckpts=max_checkpoints)
+evaluation = dict(interval=evaluation_interval, metric='bbox', save_best='bbox_mAP', by_epoch=False)
+
 
 model = dict(
     type='CoDETR',
@@ -348,8 +353,6 @@ optimizer_config = dict(grad_clip=dict(max_norm=0.1, norm_type=2))
 
 # learning policy
 lr_config = dict(policy='step', step=[11])
-
-runner = dict(type='IterBasedRunner', max_iters=max_iters)
 
 auto_scale_lr = dict(base_batch_size=base_batch_size)
 

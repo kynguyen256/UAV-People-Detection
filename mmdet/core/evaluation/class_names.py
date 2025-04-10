@@ -16,7 +16,7 @@ class DatasetEnum(Enum):
 
 def uav_people_classes():
     return [
-        'person'
+        'human_ir', 'human_rgb'
     ]
 
 def wider_face_classes():
