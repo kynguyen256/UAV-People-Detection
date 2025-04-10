@@ -4,6 +4,7 @@ from src.visualize import randomDisplay
 from src.overlays import createOverlays, process_dataset
 from src.heatmap import heatmaps
 from src.download_IR import download_IR
+from src.merger import mergeData
 
 import os
 import json
@@ -29,6 +30,8 @@ def main():
 
       # create bb heatmap
       heatmaps()
+
+      mergeData()
 
 if __name__ == "__main__":
     main()
