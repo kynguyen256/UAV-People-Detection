@@ -6,10 +6,6 @@ from src.heatmap import heatmaps
 from src.download_IR import download_IR
 from src.merger import mergeData
 
-import os
-import json
-import glob
-
 def main():
       
       # Download the data from Roboflow
@@ -17,19 +13,19 @@ def main():
       download_IR()
       
       # Ensure the COCO dataset is correct
-      check_coco_data()
+      #check_coco_data()
 
       # Randomly display some images 
-      randomDisplay()
+      #randomDisplay()
 
       # Filter for Humans only
-      process_dataset()
+      #process_dataset()
       
       # Overlay bounding boxes
-      createOverlays()
+      #createOverlays()
 
       # create bb heatmap
-      heatmaps()
+      #heatmaps()
 
       mergeData()
 
