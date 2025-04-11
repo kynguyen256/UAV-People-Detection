@@ -27,7 +27,11 @@ def main():
       # create bb heatmap
       #heatmaps()
 
-      mergeData()
+      rgb_dataset_path = "data/RGB"
+      ir_dataset_path = "data/IR"
+      output_path = "data/merged"
+
+      mergeData(rgb_dataset_path, ir_dataset_path, output_path)
 
 if __name__ == "__main__":
     main()
