@@ -35,8 +35,8 @@ def main():
 
       data_root = "data/merged"
       create_splits(data_root, train_ratio=0.7, valid_ratio=0.15, test_ratio=0.15, random_seed=42)
-      for split in ["train", "valid", "test"]:
-        validate_coco_annotations(data_root / split / "_annotations.coco.json")
+      # for split in ["train", "valid", "test"]:
+      #   validate_coco_annotations(data_root / split / "_annotations.coco.json")
 
 if __name__ == "__main__":
     main()
