@@ -35,8 +35,8 @@ def mergeData(rgb_dataset_path, ir_dataset_path, output_path):
     filename_to_new_id = {}  # Map output filename to new image ID
 
     # Define subfolders for each dataset
-    rgb_subfolders = ["train", "test", "val"]
-    ir_subfolders = ["train", "val"]
+    rgb_subfolders = ["train", "test", "valid"]
+    ir_subfolders = ["train", "valid"]
 
     # Process RGB dataset
     for subfolder in rgb_subfolders:
@@ -103,7 +103,7 @@ def mergeData(rgb_dataset_path, ir_dataset_path, output_path):
             coco_data = json.load(f)
 
         category_map = {cat["name"]: cat["id"] for cat in coco_data["categories"]}
-        orig_label = "People"  # Adjust if your IR category name differs
+        orig_label = "Person"  # Adjust if your IR category name differs
         if orig_label not in category_map:
             print(f"Category '{orig_label}' not found in IR {subfolder} dataset")
             continue
