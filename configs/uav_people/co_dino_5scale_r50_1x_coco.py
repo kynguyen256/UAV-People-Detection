@@ -325,15 +325,15 @@ log_config = dict(
         dict(
                 type='TextLoggerHook', 
                 by_epoch=False),
-        # dict(
-        #         type='MMDetWandbHook',
-        #         by_epoch=False, 
-        #         num_eval_images=0, 
-        #         init_kwargs={
-        #             'entity': "nexterarobotics",
-        #             'project': "Safety_Tracking_V1", 
-        #             'name': "co_dino_5scale_r50_1x_ppe_V1.1"},
-        #     ),
+            dict(
+                  type='MMDetWandbHook',
+                  by_epoch=False, 
+                  num_eval_images=0, 
+                  init_kwargs={
+                      'entity': "keyetnguyen7117-nguyenware",
+                      'project': "UAV-SAR", 
+                      'name': "co_dino_5scale_r50_1x_UAVP_V1.1"},
+              ),
     ])
 
 data = dict(
