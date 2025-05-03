@@ -265,6 +265,70 @@ def validate_coco_annotations(coco_file):
     print(f"Validation passed for {coco_file}")
     return True
 
+def fixAnns(data_root='data/merged', splits=['train', 'valid', 'test']):
+    """
+    Remove split prefixes (e.g., 'train/', 'valid/', 'test/') from file_name in COCO annotation files.
+    Backs up original files and verifies changes.
+    
+    Args:
+        data_root (str): Root directory containing split folders (default: 'data/merged').
+        splits (list): List of dataset splits to process (default: ['train', 'valid', 'test']).
+    """
+    data_root = Path(data_root)
+    
+    for split in splits:
+        # Define paths
+        ann_file = data_root / split / '_annotations.coco.json'
+        backup_file = data_root / split / '_annotations_backup.coco.json'
+        
+        # Check if annotation file exists
+        if not ann_file.exists():
+            print(f"Warning: Annotation file {ann_file} not found. Skipping {split} split.")
+            continue
+        
+        # Backup original file
+        if not backup_file.exists():
+            shutil.copy(ann_file, backup_file)
+            print(f"Backed up {ann_file} to {backup_file}")
+        
+        # Load annotation file
+        try:
+            with open(ann_file, 'r') as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"Error: Failed to load {ann_file}: {e}")
+            continue
+        
+        # Fix file_name entries
+        modified = False
+        for img in data['images']:
+            old_filename = img['file_name']
+            if old_filename.startswith(f'{split}/'):
+                img['file_name'] = old_filename[len(f'{split}/'):]
+                modified = True
+                print(f"Updated {split} image: {old_filename} -> {img['file_name']}")
+        
+        # Save updated file
+        if modified:
+            try:
+                with open(ann_file, 'w') as f:
+                    json.dump(data, f, indent=2)
+                print(f"Successfully updated {ann_file}")
+            except Exception as e:
+                print(f"Error: Failed to save {ann_file}: {e}")
+                continue
+        else:
+            print(f"No changes needed for {ann_file}")
+        
+        # Verify a few entries
+        with open(ann_file, 'r') as f:
+            data = json.load(f)
+        for img in data['images'][:5]:
+            if img['file_name'].startswith(f'{split}/'):
+                print(f"Warning: Prefix {split}/ still present in {img['file_name']}")
+            else:
+                print(f"Verified: {img['file_name']} has no {split}/ prefix")
+
 if __name__ == "__main__":
     rgb_dataset_path = "data/RGB"
     ir_dataset_path = "data/IR"
