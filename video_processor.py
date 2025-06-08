@@ -5,11 +5,12 @@ import argparse
 from pathlib import Path
 import tempfile
 import shutil
-import cv2 
-import torch  
+import cv2
+import torch
 import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel as DDP 
+from torch.nn.parallel import DistributedDataParallel as DDP
 from mmdet.apis import init_detector, inference_detector
+import time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,9 +59,17 @@ class VideoProcessor:
         logger.info("Initializing model...")
         try:
             if torch.cuda.is_available():
-                vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
-                logger.info(f"GPU VRAM: {vram:.2f} GB")
+                vram_total = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                logger.info(f"GPU VRAM: {vram_total:.2f} GB")
                 torch.cuda.empty_cache()
+                start_time = time.time()
+                while time.time() - start_time < 180:  # 3-minute timeout
+                    mem = torch.cuda.memory_allocated() / 1024**3
+                    logger.info(f"Current VRAM usage: {mem:.2f} GB")
+                    if mem > 14.0:
+                        logger.error("VRAM usage too high, aborting model load")
+                        raise RuntimeError("Excessive VRAM usage")
+                    time.sleep(1)
             self.model = init_detector(
                 str(self.config_path),
                 str(self.checkpoint_path),
