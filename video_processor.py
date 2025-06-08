@@ -220,7 +220,9 @@ class VideoProcessor:
         """Main processing pipeline."""
         try:
             self.setup()
+            logger.info("Setup completed, starting frame extraction")
             frame_paths = self.extract_frames()
+            logger.info(f"Frame extraction returned {len(frame_paths)} frames, or failed to execute")
             dist.barrier()  # Synchronize all processes
             
             # Broadcast frame paths to all ranks
