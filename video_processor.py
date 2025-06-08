@@ -5,13 +5,12 @@ import argparse
 from pathlib import Path
 import tempfile
 import shutil
-import cv2  
+import cv2 
 import torch  
-import torch.distributed as dist 
+import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP 
 from mmdet.apis import init_detector, inference_detector
 
-# Set up logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -35,7 +34,6 @@ class VideoProcessor:
         if self.rank == 0:
             logger.info("Setting up environment...")
         
-        # Initialize distributed process group for multi-GPU
         if self.world_size > 1:
             logger.info(f"Initializing distributed process group for world_size={self.world_size}")
             try:
@@ -50,18 +48,19 @@ class VideoProcessor:
                 logger.error(f"Failed to initialize process group: {str(e)}")
                 raise
         
-        # Create output directory
         logger.info(f"Creating output directory: {self.output_dir}")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Create temporary directory
         logger.info("Creating temporary directory")
         self.temp_dir = Path(tempfile.mkdtemp())
         logger.info(f"Temp directory created: {self.temp_dir}")
         
-        # Initialize model
         logger.info("Initializing model...")
         try:
+            if torch.cuda.is_available():
+                vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
+                logger.info(f"GPU VRAM: {vram:.2f} GB")
+                torch.cuda.empty_cache()
             self.model = init_detector(
                 str(self.config_path),
                 str(self.checkpoint_path),
@@ -71,8 +70,11 @@ class VideoProcessor:
                 logger.info(f"Wrapping model with DDP on rank {self.rank}")
                 self.model = DDP(self.model, device_ids=[self.rank])
             logger.info("Model initialized successfully")
+        except RuntimeError as e:
+            logger.error(f"CUDA or runtime error during model initialization: {str(e)}")
+            raise
         except Exception as e:
-            logger.error(f"Model initialization failed on rank {self.rank}: {str(e)}")
+            logger.error(f"Unexpected error during model initialization: {str(e)}")
             raise
         logger.info("Exiting setup method")
 
@@ -222,7 +224,6 @@ def main():
     
     logger.info(f"Arguments: config={args.config}, checkpoint={args.checkpoint}, video={args.video}, output_dir={args.output_dir}")
     
-    # For single-GPU, use rank=0, world_size=1
     rank = int(os.environ.get('RANK', 0))
     world_size = int(os.environ.get('WORLD_SIZE', 1))
     
