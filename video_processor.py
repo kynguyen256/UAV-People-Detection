@@ -73,36 +73,40 @@ class VideoProcessor:
             raise
     
     def extract_frames(self):
-        """Extract frames from video using FFmpeg (only on rank 0)."""
+        """Extract frames from video using ffmpeg (only on rank 0)."""
         if self.rank != 0:
             return []
         
-        logger.info(f"Extracting frames from {self.video_path}")
+        logger.info(f"Starting frame extraction from {self.video_path} to {self.temp_dir}")
+        if not self.video_path.exists():
+            logger.error(f"Video file does not exist: {self.video_path}")
+            raise FileNotFoundError(f"Video file does not exist: {self.video_path}")
         
         output_pattern = self.temp_dir / "frame_%06d.jpg"
         command = [
             "ffmpeg",
             "-i", str(self.video_path),
-            "-vf", "fps=30",
+            "-vf", "fps=15,scale=1280:720",  # Lower fps and resolution
             "-q:v", "2",
             str(output_pattern)
         ]
         
+        logger.info(f"Running FFmpeg command: {' '.join(command)}")
         try:
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            logger.info("Frame extraction completed")
-            return sorted(self.temp_dir.glob("frame_*.jpg"))
+            result = subprocess.run(command, check=True, capture_output=True, text=True)
+            logger.info(f"Frame extraction completed: {result.stdout}")
         except subprocess.CalledProcessError as e:
             logger.error(f"FFmpeg error: {e.stderr}")
             raise
         except Exception as e:
-            logger.error(f"Failed to extract frames: {e}")
+            logger.error(f"Unexpected error during frame extraction: {e}")
             raise
+        
+        frame_paths = sorted(self.temp_dir.glob("frame_*.jpg"))
+        logger.info(f"Extracted {len(frame_paths)} frames")
+        if not frame_paths:
+            logger.error("No frames extracted")
+        return frame_paths
     
     def overlay_bboxes(self, image_path: Path, result: list, output_path: Path, score_thr: float = 0.3):
         """Overlay bounding boxes on the image and save to output path."""
