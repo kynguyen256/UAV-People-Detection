@@ -12,6 +12,7 @@ import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from mmdet.apis import init_detector, inference_detector
 from mmdet.utils import get_device, setup_multi_processes
+from mmcv import Config
 import numpy as np
 
 # Configure logging
@@ -244,7 +245,9 @@ def setup_distributed(rank: int, world_size: int):
 def worker(rank: int, world_size: int, args):
     """Worker function for each GPU process."""
     setup_distributed(rank, world_size)
-    setup_multi_processes({'dist_params': {'backend': 'nccl'}})
+    # Load config
+    cfg = Config.fromfile(args.config)
+    setup_multi_processes(cfg)  # Pass Config object instead of dict
     
     processor = VideoProcessor(
         config_path=args.config,
