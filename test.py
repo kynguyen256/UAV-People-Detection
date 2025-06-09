@@ -1,276 +1,272 @@
-# Copyright (c) OpenMMLab. All rights reserved.
-import argparse
 import os
-import os.path as osp
-import time
-import warnings
-
-import mmcv
+import json
+import logging
+import argparse
+from pathlib import Path
+import cv2
 import torch
-from mmcv import Config, DictAction
-from mmcv.cnn import fuse_conv_bn
-from mmcv.runner import (get_dist_info, init_dist, load_checkpoint,
-                         wrap_fp16_model)
+import numpy as np
+import matplotlib.pyplot as plt
+from mmdet.apis import init_detector, inference_detector
+from google.colab import drive
 
-from mmdet.apis import multi_gpu_test, single_gpu_test
-from mmdet.datasets import (build_dataloader, build_dataset,
-                            replace_ImageToTensor)
-from mmdet.models import build_detector
-from mmdet.utils import (build_ddp, build_dp, compat_cfg, get_device,
-                         replace_cfg_vals, setup_multi_processes,
-                         update_data_root)
-from projects import *
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
+def load_coco_annotations(annotation_path):
+    """Load COCO ground truth annotations."""
+    try:
+        with open(annotation_path, 'r') as f:
+            coco_data = json.load(f)
+        logger.info(f"Loaded annotations from {annotation_path}")
+        return coco_data
+    except Exception as e:
+        logger.error(f"Failed to load annotations: {str(e)}")
+        raise
 
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description='MMDet test (and eval) a model')
-    parser.add_argument('config', help='test config file path')
-    parser.add_argument('checkpoint', help='checkpoint file')
-    parser.add_argument(
-        '--work-dir',
-        help='the directory to save the file containing evaluation metrics')
-    parser.add_argument('--out', help='output result file in pickle format')
-    parser.add_argument(
-        '--fuse-conv-bn',
-        action='store_true',
-        help='Whether to fuse conv and bn, this will slightly increase'
-        'the inference speed')
-    parser.add_argument(
-        '--gpu-ids',
-        type=int,
-        nargs='+',
-        help='(Deprecated, please use --gpu-id) ids of gpus to use '
-        '(only applicable to non-distributed training)')
-    parser.add_argument(
-        '--gpu-id',
-        type=int,
-        default=0,
-        help='id of gpu to use '
-        '(only applicable to non-distributed testing)')
-    parser.add_argument(
-        '--format-only',
-        action='store_true',
-        help='Format the output results without perform evaluation. It is'
-        'useful when you want to format the result to a specific format and '
-        'submit it to the test server')
-    parser.add_argument(
-        '--eval',
-        type=str,
-        nargs='+',
-        help='evaluation metrics, which depends on the dataset, e.g., "bbox",'
-        ' "segm", "proposal" for COCO, and "mAP", "recall" for PASCAL VOC')
-    parser.add_argument('--show', action='store_true', help='show results')
-    parser.add_argument(
-        '--show-dir', help='directory where painted images will be saved')
-    parser.add_argument(
-        '--show-score-thr',
-        type=float,
-        default=0.3,
-        help='score threshold (default: 0.3)')
-    parser.add_argument(
-        '--gpu-collect',
-        action='store_true',
-        help='whether to use gpu to collect results.')
-    parser.add_argument(
-        '--tmpdir',
-        help='tmp directory used for collecting results from multiple '
-        'workers, available when gpu-collect is not specified')
-    parser.add_argument(
-        '--cfg-options',
-        nargs='+',
-        action=DictAction,
-        help='override some settings in the used config, the key-value pair '
-        'in xxx=yyy format will be merged into config file. If the value to '
-        'be overwritten is a list, it should be like key="[a,b]" or key=a,b '
-        'It also allows nested list/tuple values, e.g. key="[(a,b),(c,d)]" '
-        'Note that the quotation marks are necessary and that no white space '
-        'is allowed.')
-    parser.add_argument(
-        '--options',
-        nargs='+',
-        action=DictAction,
-        help='custom options for evaluation, the key-value pair in xxx=yyy '
-        'format will be kwargs for dataset.evaluate() function (deprecate), '
-        'change to --eval-options instead.')
-    parser.add_argument(
-        '--eval-options',
-        nargs='+',
-        action=DictAction,
-        help='custom options for evaluation, the key-value pair in xxx=yyy '
-        'format will be kwargs for dataset.evaluate() function')
-    parser.add_argument(
-        '--launcher',
-        choices=['none', 'pytorch', 'slurm', 'mpi'],
-        default='none',
-        help='job launcher')
-    parser.add_argument('--local_rank', type=int, default=0)
-    args = parser.parse_args()
-    if 'LOCAL_RANK' not in os.environ:
-        os.environ['LOCAL_RANK'] = str(args.local_rank)
+def get_image_list(test_img_dir):
+    """Retrieve list of image paths from the test image directory."""
+    test_img_dir = Path(test_img_dir)
+    if not test_img_dir.exists():
+        logger.error(f"Test image directory does not exist: {test_img_dir}")
+        raise FileNotFoundError(f"Test image directory does not exist: {test_img_dir}")
+    
+    image_extensions = ('.jpg', '.jpeg', '.png')
+    image_paths = [p for p in test_img_dir.glob('**/*') if p.suffix.lower() in image_extensions]
+    logger.info(f"Found {len(image_paths)} images in {test_img_dir}")
+    return sorted(image_paths)
 
-    if args.options and args.eval_options:
-        raise ValueError(
-            '--options and --eval-options cannot be both '
-            'specified, --options is deprecated in favor of --eval-options')
-    if args.options:
-        warnings.warn('--options is deprecated in favor of --eval-options')
-        args.eval_options = args.options
-    return args
+def load_model(config_path, checkpoint_path, device):
+    """Initialize the CoDETR model."""
+    try:
+        model = init_detector(str(config_path), str(checkpoint_path), device=device)
+        logger.info("Model initialized successfully")
+        return model
+    except Exception as e:
+        logger.error(f"Failed to initialize model: {str(e)}")
+        raise
 
+def compute_iou(box1, box2):
+    """Compute IoU between two boxes in [x, y, w, h] format."""
+    x1, y1, w1, h1 = box1
+    x2, y2, w2, h2 = box2
+    
+    x1_max = x1 + w1
+    y1_max = y1 + h1
+    x2_max = x2 + w2
+    y2_max = y2 + h2
+    
+    inter_xmin = max(x1, x2)
+    inter_ymin = max(y1, y2)
+    inter_xmax = min(x1_max, x2_max)
+    inter_ymax = min(y1_max, y2_max)
+    
+    inter_area = max(0, inter_xmax - inter_xmin) * max(0, inter_ymax - inter_ymin)
+    area1 = w1 * h1
+    area2 = w2 * h2
+    union_area = area1 + area2 - inter_area
+    
+    return inter_area / union_area if union_area > 0 else 0.0
+
+def match_predictions_to_gt(preds, gts, iou_thr=0.5):
+    """Match predictions to ground truth based on IoU."""
+    matched = []
+    unmatched_preds = []
+    unmatched_gts = gts.copy()
+    
+    for pred in preds:
+        best_iou = 0
+        best_gt_idx = -1
+        for i, gt in enumerate(unmatched_gts):
+            iou = compute_iou(pred['bbox'], gt['bbox'])
+            if iou >= iou_thr and iou > best_iou:
+                best_iou = iou
+                best_gt_idx = i
+        if best_gt_idx >= 0:
+            matched.append((pred, unmatched_gts[best_gt_idx], best_iou))
+            unmatched_gts.pop(best_gt_idx)
+        else:
+            unmatched_preds.append(pred)
+    
+    return matched, unmatched_preds, unmatched_gts
+
+def compute_metrics(preds, gts, conf_thresholds):
+    """Compute precision, recall, and mIoU for each confidence threshold."""
+    precisions = []
+    recalls = []
+    mious = []
+    
+    for conf_thr in conf_thresholds:
+        tp = 0
+        fp = 0
+        fn = 0
+        iou_sum = 0
+        num_matches = 0
+        
+        for img_id in set(p['image_id'] for p in preds):
+            img_preds = [p for p in preds if p['image_id'] == img_id and p['score'] >= conf_thr]
+            img_gts = [g for g in gts if g['image_id'] == img_id]
+            
+            matched, unmatched_preds, unmatched_gts = match_predictions_to_gt(img_preds, img_gts)
+            
+            tp += len(matched)
+            fp += len(unmatched_preds)
+            fn += len(unmatched_gts)
+            iou_sum += sum(iou for _, _, iou in matched)
+            num_matches += len(matched)
+        
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        miou = iou_sum / num_matches if num_matches > 0 else 0.0
+        
+        precisions.append(precision)
+        recalls.append(recall)
+        mious.append(miou)
+    
+    return precisions, recalls, mious
+
+def plot_metrics(conf_thresholds, precisions, recalls, mious, output_dir):
+    """Generate and save separate plots for precision, recall, and mIoU."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Precision Plot
+    plt.figure(figsize=(8, 6))
+    plt.plot(conf_thresholds, precisions, label='Precision', color='b')
+    plt.xlabel('Confidence Threshold')
+    plt.ylabel('Precision')
+    plt.title('Precision vs Confidence Threshold')
+    plt.grid(True)
+    plt.legend()
+    plt.savefig(output_dir / 'precision_vs_conf.png')
+    plt.close()
+    logger.info("Saved precision plot")
+    
+    # Recall Plot
+    plt.figure(figsize=(8, 6))
+    plt.plot(conf_thresholds, recalls, label='Recall', color='g')
+    plt.xlabel('Confidence Threshold')
+    plt.ylabel('Recall')
+    plt.title('Recall vs Confidence Threshold')
+    plt.grid(True)
+    plt.legend()
+    plt.savefig(output_dir / 'recall_vs_conf.png')
+    plt.close()
+    logger.info("Saved recall plot")
+    
+    # mIoU Plot
+    plt.figure(figsize=(8, 6))
+    plt.plot(conf_thresholds, mious, label='mIoU', color='r')
+    plt.xlabel('Confidence Threshold')
+    plt.ylabel('mIoU')
+    plt.title('mIoU vs Confidence Threshold')
+    plt.grid(True)
+    plt.legend()
+    plt.savefig(output_dir / 'miou_vs_conf.png')
+    plt.close()
+    logger.info("Saved mIoU plot")
+
+def process_images(model, image_paths, coco_gt, score_thr=0.1):
+    """Run inference and collect predictions in COCO format."""
+    coco_results = []
+    images_info = []
+    image_id_map = {img['file_name']: img['id'] for img in coco_gt['images']}
+    
+    for img_path in image_paths:
+        try:
+            img = cv2.imread(str(img_path))
+            if img is None:
+                logger.warning(f"Failed to load image: {img_path}")
+                continue
+            
+            height, width = img.shape[:2]
+            if img_path.name not in image_id_map:
+                logger.warning(f"No ground truth for image: {img_path.name}")
+                continue
+            
+            image_id = image_id_map[img_path.name]
+            images_info.append({
+                "id": image_id,
+                "file_name": img_path.name,
+                "width": width,
+                "height": height
+            })
+            
+            result = inference_detector(model, str(img_path))
+            logger.info(f"Processed {img_path.name}: {len(result[0])} detections")
+            
+            bboxes = result[0]  # Single class
+            for bbox in bboxes:
+                if bbox[4] >= score_thr:
+                    x1, y1, x2, y2 = bbox[:4]
+                    coco_results.append({
+                        "image_id": image_id,
+                        "category_id": 1,
+                        "bbox": [float(x1), float(y1), float(x2 - x1), float(y2 - y1)],
+                        "score": float(bbox[4])
+                    })
+        
+        except Exception as e:
+            logger.warning(f"Error processing {img_path.name}: {str(e)}")
+            continue
+    
+    return coco_results, images_info
+
+def save_coco_json(coco_results, images_info, output_json):
+    """Save predictions in COCO JSON format."""
+    coco_json = {
+        "images": images_info,
+        "annotations": coco_results,
+        "categories": [{"id": 1, "name": "person", "supercategory": "object"}]
+    }
+    try:
+        with open(output_json, 'w') as f:
+            json.dump(coco_json, f, indent=2)
+        logger.info(f"COCO JSON saved to {output_json}")
+    except Exception as e:
+        logger.error(f"Failed to save COCO JSON: {str(e)}")
+        raise
 
 def main():
-    args = parse_args()
+    parser = argparse.ArgumentParser(description="Generate COCO predictions and metric plots for CoDETR")
+    parser.add_argument('--config', type=str, required=True, help="Path to model config file")
+    parser.add_argument('--checkpoint', type=str, required=True, help="Path to model checkpoint")
+    parser.add_argument('--test-img-dir', type=str, required=True, help="Path to test images directory")
+    parser.add_argument('--gt-json', type=str, required=True, help="Path to ground truth COCO JSON")
+    parser.add_argument('--output-dir', type=str, default='output', help="Output directory for plots and JSON")
+    parser.add_argument('--score-thr', type=float, default=0.1, help="Minimum score threshold for detections")
+    args = parser.parse_args()
+    
+    logger.info(f"Arguments: config={args.config}, checkpoint={args.checkpoint}, test_img_dir={args.test_img_dir}, gt_json={args.gt_json}, output_dir={args.output_dir}, score_thr={args.score_thr}")
+        
+    # Set device
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    logger.info(f"Using device: {device}")
+    
+    # Load model
+    model = load_model(args.config, args.checkpoint, device)
+    
+    # Load ground truth
+    coco_gt = load_coco_annotations(args.gt_json)
+    
+    # Get image paths
+    image_paths = get_image_list(args.test_img_dir)
+    
+    # Process images and get predictions
+    coco_results, images_info = process_images(model, image_paths, coco_gt, args.score_thr)
+    
+    # Save COCO predictions
+    save_coco_json(coco_results, images_info, Path(args.output_dir) / 'predictions.json')
+    
+    # Compute metrics for confidence thresholds
+    conf_thresholds = np.linspace(0, 1, 100)
+    precisions, recalls, mious = compute_metrics(coco_results, coco_gt['annotations'], conf_thresholds)
+    
+    # Plot metrics
+    plot_metrics(conf_thresholds, precisions, recalls, mious, args.output_dir)
 
-    assert args.out or args.eval or args.format_only or args.show \
-        or args.show_dir, \
-        ('Please specify at least one operation (save/eval/format/show the '
-         'results / save the results) with the argument "--out", "--eval"'
-         ', "--format-only", "--show" or "--show-dir"')
-
-    if args.eval and args.format_only:
-        raise ValueError('--eval and --format_only cannot be both specified')
-
-    if args.out is not None and not args.out.endswith(('.pkl', '.pickle')):
-        raise ValueError('The output file must be a pkl file.')
-
-    cfg = Config.fromfile(args.config)
-
-    # replace the ${key} with the value of cfg.key
-    cfg = replace_cfg_vals(cfg)
-
-    # update data root according to MMDET_DATASETS
-    update_data_root(cfg)
-
-    if args.cfg_options is not None:
-        cfg.merge_from_dict(args.cfg_options)
-
-    cfg = compat_cfg(cfg)
-
-    # set multi-process settings
-    setup_multi_processes(cfg)
-
-    # set cudnn_benchmark
-    if cfg.get('cudnn_benchmark', False):
-        torch.backends.cudnn.benchmark = True
-
-    if 'pretrained' in cfg.model:
-        cfg.model.pretrained = None
-    elif 'init_cfg' in cfg.model.backbone:
-        cfg.model.backbone.init_cfg = None
-
-    if cfg.model.get('neck'):
-        if isinstance(cfg.model.neck, list):
-            for neck_cfg in cfg.model.neck:
-                if neck_cfg.get('rfp_backbone'):
-                    if neck_cfg.rfp_backbone.get('pretrained'):
-                        neck_cfg.rfp_backbone.pretrained = None
-        elif cfg.model.neck.get('rfp_backbone'):
-            if cfg.model.neck.rfp_backbone.get('pretrained'):
-                cfg.model.neck.rfp_backbone.pretrained = None
-
-    if args.gpu_ids is not None:
-        cfg.gpu_ids = args.gpu_ids[0:1]
-        warnings.warn('`--gpu-ids` is deprecated, please use `--gpu-id`. '
-                      'Because we only support single GPU mode in '
-                      'non-distributed testing. Use the first GPU '
-                      'in `gpu_ids` now.')
-    else:
-        cfg.gpu_ids = [args.gpu_id]
-    cfg.device = get_device()
-    # init distributed env first, since logger depends on the dist info.
-    if args.launcher == 'none':
-        distributed = False
-    else:
-        distributed = True
-        init_dist(args.launcher, **cfg.dist_params)
-
-    test_dataloader_default_args = dict(
-        samples_per_gpu=1, workers_per_gpu=2, dist=distributed, shuffle=False)
-
-    # in case the test dataset is concatenated
-    if isinstance(cfg.data.test, dict):
-        cfg.data.test.test_mode = True
-        if cfg.data.test_dataloader.get('samples_per_gpu', 1) > 1:
-            # Replace 'ImageToTensor' to 'DefaultFormatBundle'
-            cfg.data.test.pipeline = replace_ImageToTensor(
-                cfg.data.test.pipeline)
-    elif isinstance(cfg.data.test, list):
-        for ds_cfg in cfg.data.test:
-            ds_cfg.test_mode = True
-        if cfg.data.test_dataloader.get('samples_per_gpu', 1) > 1:
-            for ds_cfg in cfg.data.test:
-                ds_cfg.pipeline = replace_ImageToTensor(ds_cfg.pipeline)
-
-    test_loader_cfg = {
-        **test_dataloader_default_args,
-        **cfg.data.get('test_dataloader', {})
-    }
-
-    rank, _ = get_dist_info()
-    # allows not to create
-    if args.work_dir is not None and rank == 0:
-        mmcv.mkdir_or_exist(osp.abspath(args.work_dir))
-        timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
-        json_file = osp.join(args.work_dir, f'eval_{timestamp}.json')
-
-    # build the dataloader
-    dataset = build_dataset(cfg.data.test)
-    data_loader = build_dataloader(dataset, **test_loader_cfg)
-
-    # build the model and load checkpoint
-    cfg.model.train_cfg = None
-    model = build_detector(cfg.model, test_cfg=cfg.get('test_cfg'))
-    fp16_cfg = cfg.get('fp16', None)
-    if fp16_cfg is not None:
-        wrap_fp16_model(model)
-    checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
-    if args.fuse_conv_bn:
-        model = fuse_conv_bn(model)
-    # old versions did not save class info in checkpoints, this walkaround is
-    # for backward compatibility
-    if 'CLASSES' in checkpoint.get('meta', {}):
-        model.CLASSES = checkpoint['meta']['CLASSES']
-    else:
-        model.CLASSES = dataset.CLASSES
-
-    if not distributed:
-        model = build_dp(model, cfg.device, device_ids=cfg.gpu_ids)
-        outputs = single_gpu_test(model, data_loader, args.show, args.show_dir,
-                                  args.show_score_thr)
-    else:
-        model = build_ddp(
-            model,
-            cfg.device,
-            device_ids=[int(os.environ['LOCAL_RANK'])],
-            broadcast_buffers=False)
-        outputs = multi_gpu_test(
-            model, data_loader, args.tmpdir, args.gpu_collect
-            or cfg.evaluation.get('gpu_collect', False))
-
-    rank, _ = get_dist_info()
-    if rank == 0:
-        if args.out:
-            print(f'\nwriting results to {args.out}')
-            mmcv.dump(outputs, args.out)
-        kwargs = {} if args.eval_options is None else args.eval_options
-        if args.format_only:
-            dataset.format_results(outputs, **kwargs)
-        if args.eval:
-            eval_kwargs = cfg.get('evaluation', {}).copy()
-            # hard-code way to remove EvalHook args
-            for key in [
-                    'interval', 'tmpdir', 'start', 'gpu_collect', 'save_best',
-                    'rule', 'dynamic_intervals'
-            ]:
-                eval_kwargs.pop(key, None)
-            eval_kwargs.update(dict(metric=args.eval, **kwargs))
-            metric = dataset.evaluate(outputs, **eval_kwargs)
-            print(metric)
-            metric_dict = dict(config=args.config, metric=metric)
-            if args.work_dir is not None and rank == 0:
-                mmcv.dump(metric_dict, json_file)
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
