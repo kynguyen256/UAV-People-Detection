@@ -25,7 +25,7 @@ evaluation_interval = 1499
 checkpoint_interval = int(evaluation_interval / max_checkpoints)
 
 runner = dict(type='IterBasedRunner', max_iters=max_iters)
-checkpoint_config = dict(by_epoch=False, interval=checkpoint_interval, max_keep_ckpts=max_checkpoints, resume_from='/content/drive/MyDrive/best_bbox_mAP_iter_4497.pth')
+checkpoint_config = dict(by_epoch=False, interval=checkpoint_interval, max_keep_ckpts=max_checkpoints)
 evaluation = dict(interval=evaluation_interval, metric='bbox', save_best='bbox_mAP', by_epoch=False)
 
 
