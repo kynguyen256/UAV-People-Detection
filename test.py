@@ -8,7 +8,6 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from mmdet.apis import init_detector, inference_detector
-from google.colab import drive
 
 logging.basicConfig(
     level=logging.INFO,
