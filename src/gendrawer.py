@@ -93,7 +93,7 @@ def main():
     predictions = load_predictions(args.predictions_json)
     
     # Visualize images
-    visualize_images(predictions, args.test_img_dir, output_dir, args.num_images)
+    visualize_images(predictions, args.test_img_dir, args.output_dir, args.num_images)
 
 if __name__ == "__main__":
     main()
