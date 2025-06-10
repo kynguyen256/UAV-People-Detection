@@ -5,7 +5,6 @@ import argparse
 import random
 from pathlib import Path
 import cv2
-from IPython.display import Image, display  # For Colab display
 
 logging.basicConfig(
     level=logging.INFO,
@@ -75,9 +74,6 @@ def visualize_images(predictions, img_dir, output_dir, num_images):
             save_path = output_dir / f"vis_{img_name}"
             cv2.imwrite(str(save_path), img)
             logger.info(f"Saved visualization to {save_path}")
-            
-            # Display in Colab
-            display(Image(str(save_path)))
             
         except Exception as e:
             logger.warning(f"Error processing image {img_name}: {str(e)}")
