@@ -5,8 +5,7 @@ import argparse
 import random
 from pathlib import Path
 import cv2
-import numpy as np
-import matplotlib.pyplot as plt
+from IPython.display import Image, display  # For Colab display
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,7 +25,7 @@ def load_predictions(json_path):
         raise
 
 def visualize_images(predictions, img_dir, output_dir, num_images):
-    """Visualize n random images with predicted bounding boxes."""
+    """Visualize n random images with predicted bounding boxes using cv2."""
     output_dir = Path(output_dir) / 'visualizations'
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -58,7 +57,7 @@ def visualize_images(predictions, img_dir, output_dir, num_images):
             # Get annotations for this image
             annotations = [ann for ann in predictions['annotations'] if ann['image_id'] == img_id]
             
-            # Draw bounding boxes
+            # Draw bounding boxes and labels
             for ann in annotations:
                 x, y, w, h = [int(coord) for coord in ann['bbox']]
                 cat_id = ann['category_id']
@@ -72,27 +71,20 @@ def visualize_images(predictions, img_dir, output_dir, num_images):
                 label = f"{cat_id_to_name[cat_id]}: {score:.2f}"
                 cv2.putText(img, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
             
-            # Convert BGR to RGB for Matplotlib
-            img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            
-            # Display image
-            plt.figure(figsize=(10, 6))
-            plt.imshow(img_rgb)
-            plt.title(f"Image: {img_name}")
-            plt.axis('off')
-            
             # Save visualization
             save_path = output_dir / f"vis_{img_name}"
-            plt.savefig(save_path, bbox_inches='tight')
+            cv2.imwrite(str(save_path), img)
             logger.info(f"Saved visualization to {save_path}")
-            plt.close()
+            
+            # Display in Colab
+            display(Image(str(save_path)))
             
         except Exception as e:
             logger.warning(f"Error processing image {img_name}: {str(e)}")
             continue
 
 def main():
-    parser = argparse.ArgumentParser(description="Visualize random images with predictions from COCO JSON")
+    parser = argparse.ArgumentParser(description="Visualize random images with predictions from COCO JSON using cv2")
     parser.add_argument('--predictions-json', type=str, required=True, help="Path to predictions COCO JSON")
     parser.add_argument('--test-img-dir', type=str, required=True, help="Path to test images")
     parser.add_argument('--output-dir', type=str, default='output', help="Output directory for visualizations")
@@ -105,7 +97,7 @@ def main():
     predictions = load_predictions(args.predictions_json)
     
     # Visualize images
-    visualize_images(predictions, args.test_img_dir, args.output_dir, args.num_images)
+    visualize_images(predictions, args.test_img_dir, output_dir, args.num_images)
 
 if __name__ == "__main__":
     main()
