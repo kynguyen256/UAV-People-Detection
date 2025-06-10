@@ -71,7 +71,7 @@ def compute_iou(box1, box2):
     return inter_area / union_area if union_area > 0 else 0.0
 
 def match_predictions_to_gt(preds, gts, iou_thr=0.5):
-    """Match predictions to ground truth based on IoU."""
+    """Match predictions to ground truth based on IoU and category ID."""
     matched = []
     unmatched_preds = []
     unmatched_gts = gts.copy()
@@ -80,10 +80,11 @@ def match_predictions_to_gt(preds, gts, iou_thr=0.5):
         best_iou = 0
         best_gt_idx = -1
         for i, gt in enumerate(unmatched_gts):
-            iou = compute_iou(pred['bbox'], gt['bbox'])
-            if iou >= iou_thr and iou > best_iou:
-                best_iou = iou
-                best_gt_idx = i
+            if pred['category_id'] == gt['category_id']:  # Match only same category
+                iou = compute_iou(pred['bbox'], gt['bbox'])
+                if iou >= iou_thr and iou > best_iou:
+                    best_iou = iou
+                    best_gt_idx = i
         if best_gt_idx >= 0:
             matched.append((pred, unmatched_gts[best_gt_idx], best_iou))
             unmatched_gts.pop(best_gt_idx)
@@ -169,7 +170,7 @@ def plot_metrics(conf_thresholds, precisions, recalls, mious, output_dir):
     logger.info("Saved mIoU plot")
 
 def process_images(model, image_paths, coco_gt, score_thr=0.1):
-    """Run inference and collect predictions in COCO format."""
+    """Run inference and collect predictions in COCO format for two classes."""
     coco_results = []
     images_info = []
     image_id_map = {img['file_name']: img['id'] for img in coco_gt['images']}
@@ -195,18 +196,20 @@ def process_images(model, image_paths, coco_gt, score_thr=0.1):
             })
             
             result = inference_detector(model, str(img_path))
-            logger.info(f"Processed {img_path.name}: {len(result[0])} detections")
+            logger.info(f"Processed {img_path.name}: {sum(len(res) for res in result)} detections")
             
-            bboxes = result[0]  # Single class
-            for bbox in bboxes:
-                if bbox[4] >= score_thr:
-                    x1, y1, x2, y2 = bbox[:4]
-                    coco_results.append({
-                        "image_id": image_id,
-                        "category_id": 1,
-                        "bbox": [float(x1), float(y1), float(x2 - x1), float(y2 - y1)],
-                        "score": float(bbox[4])
-                    })
+            # Process predictions for both classes (human_ir: cat_id=0, human_rgb: cat_id=1)
+            for class_idx, bboxes in enumerate(result):  # result[0] -> human_ir, result[1] -> human_rgb
+                cat_id = class_idx  # Maps class_idx 0 to cat_id 0, class_idx 1 to cat_id 1
+                for bbox in bboxes:
+                    if bbox[4] >= score_thr:
+                        x1, y1, x2, y2 = bbox[:4]
+                        coco_results.append({
+                            "image_id": image_id,
+                            "category_id": cat_id,
+                            "bbox": [float(x1), float(y1), float(x2 - x1), float(y2 - y1)],
+                            "score": float(bbox[4])
+                        })
         
         except Exception as e:
             logger.warning(f"Error processing {img_path.name}: {str(e)}")
@@ -215,11 +218,16 @@ def process_images(model, image_paths, coco_gt, score_thr=0.1):
     return coco_results, images_info
 
 def save_coco_json(coco_results, images_info, output_json):
-    """Save predictions in COCO JSON format."""
+    """Save predictions in COCO JSON format, creating output directory if needed."""
+    output_json = Path(output_json)
+    output_json.parent.mkdir(parents=True, exist_ok=True)  # Create output directory
     coco_json = {
         "images": images_info,
         "annotations": coco_results,
-        "categories": [{"id": 1, "name": "person", "supercategory": "object"}]
+        "categories": [
+            {"id": 0, "name": "human_ir", "supercategory": "person"},
+            {"id": 1, "name": "human_rgb", "supercategory": "person"}
+        ]
     }
     try:
         with open(output_json, 'w') as f:
@@ -240,7 +248,7 @@ def main():
     args = parser.parse_args()
     
     logger.info(f"Arguments: config={args.config}, checkpoint={args.checkpoint}, test_img_dir={args.test_img_dir}, gt_json={args.gt_json}, output_dir={args.output_dir}, score_thr={args.score_thr}")
-        
+    
     # Set device
     device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     logger.info(f"Using device: {device}")
