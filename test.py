@@ -94,7 +94,12 @@ def match_predictions_to_gt(preds, gts, iou_thr=0.5):
     return matched, unmatched_preds, unmatched_gts
 
 def compute_metrics(preds, gts, conf_thresholds):
-    """Compute precision, recall, and mIoU for each confidence threshold."""
+    """Compute precision, recall, and mIoU for each confidence threshold for combined and per-class cases."""
+    # Initialize metrics dictionary
+    metrics = {'combined': {}, 'per_class': {}}
+    classes = {0: 'human_ir', 1: 'human_rgb'}
+    
+    # Compute combined metrics (all classes)
     precisions = []
     recalls = []
     mious = []
@@ -126,48 +131,92 @@ def compute_metrics(preds, gts, conf_thresholds):
         recalls.append(recall)
         mious.append(miou)
     
-    return precisions, recalls, mious
+    metrics['combined'] = {
+        'precisions': precisions,
+        'recalls': recalls,
+        'mious': mious
+    }
+    
+    # Compute per-class metrics
+    for class_id in classes:
+        class_preds = [p for p in preds if p['category_id'] == class_id]
+        class_gts = [g for g in gts if g['category_id'] == class_id]
+        
+        precisions = []
+        recalls = []
+        mious = []
+        
+        for conf_thr in conf_thresholds:
+            tp = 0
+            fp = 0
+            fn = 0
+            iou_sum = 0
+            num_matches = 0
+            
+            for img_id in set(p['image_id'] for p in class_preds):
+                img_preds = [p for p in class_preds if p['image_id'] == img_id and p['score'] >= conf_thr]
+                img_gts = [g for g in class_gts if g['image_id'] == img_id]
+                
+                matched, unmatched_preds, unmatched_gts = match_predictions_to_gt(img_preds, img_gts)
+                
+                tp += len(matched)
+                fp += len(unmatched_preds)
+                fn += len(unmatched_gts)
+                iou_sum += sum(iou for _, _, iou in matched)
+                num_matches += len(matched)
+            
+            precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            miou = iou_sum / num_matches if num_matches > 0 else 0.0
+            
+            precisions.append(precision)
+            recalls.append(recall)
+            mious.append(miou)
+        
+        metrics['per_class'][class_id] = {
+            'precisions': precisions,
+            'recalls': recalls,
+            'mious': mious
+        }
+    
+    return metrics
 
-def plot_metrics(conf_thresholds, precisions, recalls, mious, output_dir):
-    """Generate and save separate plots for precision, recall, and mIoU."""
+def plot_metrics(conf_thresholds, metrics, output_dir):
+    """Generate and save combined plots for precision, recall, and mIoU for combined and per-class cases."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Precision Plot
-    plt.figure(figsize=(8, 6))
-    plt.plot(conf_thresholds, precisions, label='Precision', color='b')
-    plt.xlabel('Confidence Threshold')
-    plt.ylabel('Precision')
-    plt.title('Precision vs Confidence Threshold')
-    plt.grid(True)
-    plt.legend()
-    plt.savefig(output_dir / 'precision_vs_conf.png')
-    plt.close()
-    logger.info("Saved precision plot")
+    classes = {0: 'human_ir', 1: 'human_rgb'}
     
-    # Recall Plot
-    plt.figure(figsize=(8, 6))
-    plt.plot(conf_thresholds, recalls, label='Recall', color='g')
+    # Plot combined metrics
+    plt.figure(figsize=(10, 8))
+    plt.plot(conf_thresholds, metrics['combined']['precisions'], label='Precision', color='b', linewidth=2)
+    plt.plot(conf_thresholds, metrics['combined']['recalls'], label='Recall', color='g', linewidth=2)
+    plt.plot(conf_thresholds, metrics['combined']['mious'], label='mIoU', color='r', linewidth=2)
     plt.xlabel('Confidence Threshold')
-    plt.ylabel('Recall')
-    plt.title('Recall vs Confidence Threshold')
+    plt.ylabel('Metric Value')
+    plt.title('Precision, Recall, and mIoU vs Confidence Threshold (Combined)')
     plt.grid(True)
     plt.legend()
-    plt.savefig(output_dir / 'recall_vs_conf.png')
+    plt.savefig(output_dir / 'metrics_vs_conf.png')
     plt.close()
-    logger.info("Saved recall plot")
+    logger.info("Saved combined metrics plot for all classes")
     
-    # mIoU Plot
-    plt.figure(figsize=(8, 6))
-    plt.plot(conf_thresholds, mious, label='mIoU', color='r')
-    plt.xlabel('Confidence Threshold')
-    plt.ylabel('mIoU')
-    plt.title('mIoU vs Confidence Threshold')
-    plt.grid(True)
-    plt.legend()
-    plt.savefig(output_dir / 'miou_vs_conf.png')
-    plt.close()
-    logger.info("Saved mIoU plot")
+    # Plot per-class metrics
+    for class_id, class_name in classes.items():
+        class_metrics = metrics['per_class'][class_id]
+        plt.figure(figsize=(10, 8))
+        plt.plot(conf_thresholds, class_metrics['precisions'], label='Precision', color='b', linewidth=2)
+        plt.plot(conf_thresholds, class_metrics['recalls'], label='Recall', color='g', linewidth=2)
+        plt.plot(conf_thresholds, class_metrics['mious'], label='mIoU', color='r', linewidth=2)
+        plt.xlabel('Confidence Threshold')
+        plt.ylabel('Metric Value')
+        plt.title(f'Precision, Recall, and mIoU vs Confidence Threshold ({class_name})')
+        plt.grid(True)
+        plt.legend()
+        plt.savefig(output_dir / f'metrics_vs_conf_{class_name}.png')
+        plt.close()
+        logger.info(f"Saved combined metrics plot for {class_name}")
 
 def process_images(model, image_paths, coco_gt, score_thr=0.1):
     """Run inference and collect predictions in COCO format for two classes."""
@@ -270,10 +319,10 @@ def main():
     
     # Compute metrics for confidence thresholds
     conf_thresholds = np.linspace(0, 1, 100)
-    precisions, recalls, mious = compute_metrics(coco_results, coco_gt['annotations'], conf_thresholds)
+    metrics = compute_metrics(coco_results, coco_gt['annotations'], conf_thresholds)
     
     # Plot metrics
-    plot_metrics(conf_thresholds, precisions, recalls, mious, args.output_dir)
+    plot_metrics(conf_thresholds, metrics, args.output_dir)
 
 if __name__ == "__main__":
     main()
