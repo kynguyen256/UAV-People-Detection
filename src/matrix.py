@@ -71,7 +71,7 @@ def match_predictions_to_gt(pred_boxes, gt_boxes, iou_threshold=0.5):
     
     return matches
 
-def compute_per_class_metrics(gt_data, pred_data, class_id, conf_threshold=0.5, iou_threshold=0.5):
+def compute_per_class_metrics(gt_data, pred_data, class_id, conf_threshold=0.5, iou_threshold=0.5, return_iou_list=False):
     """
     Compute binary confusion matrix for a specific class.
     Treats the problem as binary: class_id vs everything else (including no detection).
@@ -79,6 +79,7 @@ def compute_per_class_metrics(gt_data, pred_data, class_id, conf_threshold=0.5, 
     tp = 0  # Ground truth is class_id, prediction is class_id
     fp = 0  # No ground truth or ground truth is different class, prediction is class_id
     fn = 0  # Ground truth is class_id, no matching prediction or prediction is different class
+    iou_scores = []  # Store IoU scores for mIoU calculation
     
     # Group annotations by image
     gt_by_image = defaultdict(list)
@@ -105,8 +106,10 @@ def compute_per_class_metrics(gt_data, pred_data, class_id, conf_threshold=0.5, 
         # Match predictions to ground truth (only for same class)
         matches = match_predictions_to_gt(pred_class_boxes, gt_class_boxes, iou_threshold)
         
-        # Count true positives
+        # Count true positives and collect IoU scores
         tp += len(matches)
+        for _, _, iou in matches:
+            iou_scores.append(iou)
         
         # Count false negatives (unmatched ground truth of this class)
         matched_gt_indices = {gt_idx for _, gt_idx, _ in matches}
@@ -116,13 +119,18 @@ def compute_per_class_metrics(gt_data, pred_data, class_id, conf_threshold=0.5, 
         matched_pred_indices = {pred_idx for pred_idx, _, _ in matches}
         fp += len([pred for i, pred in enumerate(pred_class_boxes) if i not in matched_pred_indices])
     
-    return tp, fp, fn
+    # Calculate mIoU
+    miou = np.mean(iou_scores) if iou_scores else 0.0
+    
+    if return_iou_list:
+        return tp, fp, fn, miou, iou_scores
+    return tp, fp, fn, miou
 
 def compute_metrics_for_threshold_per_class(args):
     """Compute metrics for a single confidence threshold for a specific class."""
     conf_threshold, gt_data, pred_data, class_id, iou_threshold = args
     
-    tp, fp, fn = compute_per_class_metrics(
+    tp, fp, fn, miou = compute_per_class_metrics(
         gt_data, pred_data, class_id, conf_threshold, iou_threshold
     )
     
@@ -137,7 +145,8 @@ def compute_metrics_for_threshold_per_class(args):
         'fn': fn,
         'precision': precision,
         'recall': recall,
-        'f1': f1
+        'f1': f1,
+        'miou': miou
     }
 
 def find_optimal_threshold_per_class(gt_data, pred_data, class_id, iou_threshold=0.5, n_thresholds=50, n_jobs=None):
@@ -216,12 +225,14 @@ def plot_per_class_confusion_matrices(results_per_class, categories, output_dir=
         precision = best_result['precision']
         recall = best_result['recall']
         f1 = best_result['f1']
+        miou = best_result['miou']
         threshold = best_result['threshold']
         
         metrics_text = f"Threshold: {threshold:.3f}\n"
         metrics_text += f"Precision: {precision:.3f}\n"
         metrics_text += f"Recall: {recall:.3f}\n"
-        metrics_text += f"F1-Score: {f1:.3f}"
+        metrics_text += f"F1-Score: {f1:.3f}\n"
+        metrics_text += f"mIoU: {miou:.3f}"
         
         ax.text(0.5, -0.15, metrics_text, transform=ax.transAxes,
                 ha='center', va='top', fontsize=11,
@@ -239,7 +250,7 @@ def plot_per_class_confusion_matrices(results_per_class, categories, output_dir=
     plt.show()
 
 def plot_f1_vs_threshold_per_class(results_per_class, categories, output_dir=None):
-    """Plot F1, precision, and recall vs threshold for each class."""
+    """Plot F1, precision, recall, and mIoU vs threshold for each class."""
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
     
     for idx, (class_id, class_name) in enumerate(categories.items()):
@@ -250,6 +261,7 @@ def plot_f1_vs_threshold_per_class(results_per_class, categories, output_dir=Non
         f1_scores = [r['f1'] for r in all_results]
         precisions = [r['precision'] for r in all_results]
         recalls = [r['recall'] for r in all_results]
+        mious = [r['miou'] for r in all_results]
         
         ax = axes[idx]
         
@@ -257,6 +269,7 @@ def plot_f1_vs_threshold_per_class(results_per_class, categories, output_dir=Non
         ax.plot(thresholds, f1_scores, 'g-', linewidth=2, label='F1-Score')
         ax.plot(thresholds, precisions, 'b-', linewidth=2, label='Precision')
         ax.plot(thresholds, recalls, 'r-', linewidth=2, label='Recall')
+        ax.plot(thresholds, mious, 'm-', linewidth=2, label='mIoU')
         
         # Mark best threshold
         best_f1 = max(f1_scores)
@@ -280,12 +293,72 @@ def plot_f1_vs_threshold_per_class(results_per_class, categories, output_dir=Non
     
     plt.show()
 
+def plot_iou_distribution(gt_data, pred_data, results_per_class, categories, output_dir=None):
+    """Plot IoU distribution for each class at optimal threshold."""
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    
+    for idx, (class_id, class_name) in enumerate(categories.items()):
+        # Get optimal threshold
+        optimal_threshold = results_per_class[class_id]['best']['threshold']
+        
+        # Get IoU scores at optimal threshold
+        _, _, _, _, iou_scores = compute_per_class_metrics(
+            gt_data, pred_data, class_id, optimal_threshold, 0.5, return_iou_list=True
+        )
+        
+        ax = axes[idx]
+        
+        if iou_scores:
+            # Create histogram
+            bins = np.linspace(0.5, 1.0, 21)  # 20 bins from 0.5 to 1.0
+            ax.hist(iou_scores, bins=bins, color='skyblue', edgecolor='black', alpha=0.7)
+            
+            # Add statistics
+            mean_iou = np.mean(iou_scores)
+            median_iou = np.median(iou_scores)
+            std_iou = np.std(iou_scores)
+            
+            # Add vertical lines for mean and median
+            ax.axvline(mean_iou, color='red', linestyle='--', linewidth=2, label=f'Mean: {mean_iou:.3f}')
+            ax.axvline(median_iou, color='green', linestyle='--', linewidth=2, label=f'Median: {median_iou:.3f}')
+            
+            # Add text box with statistics
+            stats_text = f'Count: {len(iou_scores)}\n'
+            stats_text += f'Std Dev: {std_iou:.3f}\n'
+            stats_text += f'Min: {min(iou_scores):.3f}\n'
+            stats_text += f'Max: {max(iou_scores):.3f}'
+            
+            ax.text(0.05, 0.95, stats_text, transform=ax.transAxes,
+                   verticalalignment='top', fontsize=10,
+                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+            
+            ax.set_xlabel('IoU Score', fontsize=12)
+            ax.set_ylabel('Frequency', fontsize=12)
+            ax.set_title(f'{class_name} IoU Distribution (threshold={optimal_threshold:.3f})', fontsize=14)
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            ax.set_xlim(0.5, 1.0)
+        else:
+            ax.text(0.5, 0.5, 'No matches found', transform=ax.transAxes,
+                   ha='center', va='center', fontsize=14)
+            ax.set_title(f'{class_name} - No Detections', fontsize=14)
+    
+    plt.tight_layout()
+    
+    if output_dir:
+        output_path = Path(output_dir) / 'iou_distribution_per_class.png'
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        logger.info(f"Saved IoU distribution plot to {output_path}")
+    
+    plt.show()
+
 def plot_combined_f1_comparison(results_per_class, categories, output_dir=None):
-    """Plot F1 scores for both classes on the same plot for comparison."""
-    plt.figure(figsize=(10, 6))
+    """Plot F1 scores and mIoU for both classes on the same plot for comparison."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
     
     colors = ['blue', 'red']
     
+    # Plot F1 scores
     for idx, (class_id, class_name) in enumerate(categories.items()):
         all_results = results_per_class[class_id]['all']
         best_threshold = results_per_class[class_id]['best']['threshold']
@@ -293,27 +366,52 @@ def plot_combined_f1_comparison(results_per_class, categories, output_dir=None):
         thresholds = [r['threshold'] for r in all_results]
         f1_scores = [r['f1'] for r in all_results]
         
-        plt.plot(thresholds, f1_scores, color=colors[idx], linewidth=2, 
+        ax1.plot(thresholds, f1_scores, color=colors[idx], linewidth=2, 
                 label=f'{class_name} F1')
         
         # Mark best threshold
         best_f1 = max(f1_scores)
-        plt.axvline(x=best_threshold, color=colors[idx], linestyle=':', alpha=0.7, 
+        ax1.axvline(x=best_threshold, color=colors[idx], linestyle=':', alpha=0.7, 
                    label=f'{class_name} best ({best_threshold:.3f}, F1={best_f1:.3f})')
     
-    plt.xlabel('Confidence Threshold', fontsize=12)
-    plt.ylabel('F1 Score', fontsize=12)
-    plt.title('F1 Score Comparison Across Classes', fontsize=14)
-    plt.legend(loc='best')
-    plt.grid(True, alpha=0.3)
-    plt.xlim(0, 1)
-    plt.ylim(0, 1)
+    ax1.set_xlabel('Confidence Threshold', fontsize=12)
+    ax1.set_ylabel('F1 Score', fontsize=12)
+    ax1.set_title('F1 Score Comparison Across Classes', fontsize=14)
+    ax1.legend(loc='best')
+    ax1.grid(True, alpha=0.3)
+    ax1.set_xlim(0, 1)
+    ax1.set_ylim(0, 1)
+    
+    # Plot mIoU scores
+    for idx, (class_id, class_name) in enumerate(categories.items()):
+        all_results = results_per_class[class_id]['all']
+        best_threshold = results_per_class[class_id]['best']['threshold']
+        
+        thresholds = [r['threshold'] for r in all_results]
+        mious = [r['miou'] for r in all_results]
+        
+        ax2.plot(thresholds, mious, color=colors[idx], linewidth=2, 
+                label=f'{class_name} mIoU')
+        
+        # Mark best threshold
+        best_miou = results_per_class[class_id]['best']['miou']
+        ax2.axvline(x=best_threshold, color=colors[idx], linestyle=':', alpha=0.7, 
+                   label=f'{class_name} @ optimal ({best_threshold:.3f}, mIoU={best_miou:.3f})')
+    
+    ax2.set_xlabel('Confidence Threshold', fontsize=12)
+    ax2.set_ylabel('mIoU Score', fontsize=12)
+    ax2.set_title('mIoU Comparison Across Classes', fontsize=14)
+    ax2.legend(loc='best')
+    ax2.grid(True, alpha=0.3)
+    ax2.set_xlim(0, 1)
+    ax2.set_ylim(0, 1)
+    
     plt.tight_layout()
     
     if output_dir:
-        output_path = Path(output_dir) / 'f1_comparison.png'
+        output_path = Path(output_dir) / 'f1_miou_comparison.png'
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        logger.info(f"Saved F1 comparison plot to {output_path}")
+        logger.info(f"Saved F1 and mIoU comparison plot to {output_path}")
     
     plt.show()
 
@@ -334,6 +432,7 @@ def print_per_class_metrics(results_per_class, categories):
         print(f"  Precision:         {best['precision']:.4f}")
         print(f"  Recall:            {best['recall']:.4f}")
         print(f"  F1-Score:          {best['f1']:.4f}")
+        print(f"  mIoU:              {best['miou']:.4f}")
     
     print("\n" + "="*70)
 
@@ -409,7 +508,7 @@ def main():
         logger.info(f"Using fixed confidence threshold: {conf_threshold}")
         
         for class_id, class_name in categories.items():
-            tp, fp, fn = compute_per_class_metrics(
+            tp, fp, fn, miou = compute_per_class_metrics(
                 gt_data, pred_data, class_id, conf_threshold, args.iou_threshold
             )
             
@@ -425,7 +524,8 @@ def main():
                     'fn': fn,
                     'precision': precision,
                     'recall': recall,
-                    'f1': f1
+                    'f1': f1,
+                    'miou': miou
                 },
                 'all': None  # No threshold search performed
             }
@@ -439,6 +539,9 @@ def main():
     if args.auto_threshold and not args.no_threshold_plot:
         plot_f1_vs_threshold_per_class(results_per_class, categories, output_dir)
         plot_combined_f1_comparison(results_per_class, categories, output_dir)
+    
+    # Always plot IoU distribution
+    plot_iou_distribution(gt_data, pred_data, results_per_class, categories, output_dir)
 
 if __name__ == "__main__":
     main()
