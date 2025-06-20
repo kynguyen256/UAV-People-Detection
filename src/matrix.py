@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import defaultdict
 import logging
+from multiprocessing import Pool, cpu_count
+from functools import partial
+import time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -136,7 +139,118 @@ def generate_confusion_matrix(gt_data, pred_data, conf_threshold=0.5, iou_thresh
     
     return cm, false_positives, false_negatives, categories
 
-def plot_confusion_matrix(cm, categories, false_positives, false_negatives, output_path=None):
+def compute_metrics_for_threshold(args):
+    """Compute metrics for a single confidence threshold (for parallel processing)."""
+    conf_threshold, gt_data, pred_data, iou_threshold = args
+    
+    cm, fp, fn, categories = generate_confusion_matrix(
+        gt_data, pred_data, conf_threshold, iou_threshold
+    )
+    
+    # Calculate overall and per-class F1 scores
+    f1_scores = {}
+    overall_tp = 0
+    overall_fp = 0
+    overall_fn = 0
+    
+    for class_id in categories:
+        tp = cm[class_id, class_id]
+        fp_count = fp[class_id]
+        fn_count = fn[class_id]
+        
+        precision = tp / (tp + fp_count) if (tp + fp_count) > 0 else 0
+        recall = tp / (tp + fn_count) if (tp + fn_count) > 0 else 0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        
+        f1_scores[class_id] = f1
+        overall_tp += tp
+        overall_fp += fp_count
+        overall_fn += fn_count
+    
+    # Calculate overall F1
+    overall_precision = overall_tp / (overall_tp + overall_fp) if (overall_tp + overall_fp) > 0 else 0
+    overall_recall = overall_tp / (overall_tp + overall_fn) if (overall_tp + overall_fn) > 0 else 0
+    overall_f1 = 2 * (overall_precision * overall_recall) / (overall_precision + overall_recall) if (overall_precision + overall_recall) > 0 else 0
+    
+    return {
+        'threshold': conf_threshold,
+        'overall_f1': overall_f1,
+        'per_class_f1': f1_scores,
+        'cm': cm,
+        'fp': dict(fp),
+        'fn': dict(fn)
+    }
+
+def find_optimal_threshold(gt_data, pred_data, iou_threshold=0.5, n_thresholds=50, n_jobs=None):
+    """Find the confidence threshold that maximizes overall F1 score."""
+    if n_jobs is None:
+        n_jobs = min(cpu_count(), n_thresholds)
+    
+    # Generate thresholds to test
+    thresholds = np.linspace(0.01, 0.99, n_thresholds)
+    
+    logger.info(f"Evaluating {n_thresholds} confidence thresholds using {n_jobs} CPUs...")
+    start_time = time.time()
+    
+    # Prepare arguments for parallel processing
+    args_list = [(thr, gt_data, pred_data, iou_threshold) for thr in thresholds]
+    
+    # Run parallel computation
+    with Pool(n_jobs) as pool:
+        results = pool.map(compute_metrics_for_threshold, args_list)
+    
+    elapsed_time = time.time() - start_time
+    logger.info(f"Threshold evaluation completed in {elapsed_time:.2f} seconds")
+    
+    # Find best threshold
+    best_result = max(results, key=lambda x: x['overall_f1'])
+    
+    return best_result, results
+
+def plot_f1_vs_threshold(results, categories, best_threshold, output_dir=None):
+    """Plot F1 scores vs confidence threshold."""
+    thresholds = [r['threshold'] for r in results]
+    overall_f1 = [r['overall_f1'] for r in results]
+    
+    # Per-class F1 scores
+    per_class_f1 = defaultdict(list)
+    for r in results:
+        for class_id, f1 in r['per_class_f1'].items():
+            per_class_f1[class_id].append(f1)
+    
+    plt.figure(figsize=(10, 6))
+    
+    # Plot overall F1
+    plt.plot(thresholds, overall_f1, 'k-', linewidth=2, label='Overall F1')
+    
+    # Plot per-class F1
+    colors = plt.cm.tab10(np.linspace(0, 1, len(categories)))
+    for i, (class_id, class_name) in enumerate(categories.items()):
+        plt.plot(thresholds, per_class_f1[class_id], '--', color=colors[i], 
+                label=f'{class_name} F1', alpha=0.7)
+    
+    # Mark best threshold
+    best_f1 = max(overall_f1)
+    plt.axvline(x=best_threshold, color='r', linestyle=':', alpha=0.7, 
+               label=f'Best threshold ({best_threshold:.3f})')
+    plt.axhline(y=best_f1, color='r', linestyle=':', alpha=0.3)
+    
+    plt.xlabel('Confidence Threshold')
+    plt.ylabel('F1 Score')
+    plt.title('F1 Score vs Confidence Threshold')
+    plt.legend(loc='best')
+    plt.grid(True, alpha=0.3)
+    plt.xlim(0, 1)
+    plt.ylim(0, 1)
+    
+    if output_dir:
+        output_path = Path(output_dir) / 'f1_vs_threshold.png'
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        logger.info(f"Saved F1 vs threshold plot to {output_path}")
+    
+    plt.show()
+
+def plot_confusion_matrix(cm, categories, false_positives, false_negatives, conf_threshold, output_path=None):
     """Plot confusion matrix with additional FP/FN information."""
     class_names = [categories[i] for i in sorted(categories.keys())]
     
@@ -149,7 +263,7 @@ def plot_confusion_matrix(cm, categories, false_positives, false_negatives, outp
                 ax=ax1, cbar_kws={'label': 'Count'})
     ax1.set_xlabel('Predicted Class')
     ax1.set_ylabel('True Class')
-    ax1.set_title('Detection Confusion Matrix')
+    ax1.set_title(f'Detection Confusion Matrix (conf={conf_threshold:.3f})')
     
     # Calculate and display metrics
     total_gt = cm.sum(axis=1) + np.array([false_negatives[i] for i in range(len(categories))])
@@ -188,16 +302,24 @@ def plot_confusion_matrix(cm, categories, false_positives, false_negatives, outp
     
     plt.show()
 
-def print_detailed_metrics(cm, false_positives, false_negatives, categories):
+def print_detailed_metrics(cm, false_positives, false_negatives, categories, conf_threshold):
     """Print detailed metrics for each class."""
     print("\n" + "="*60)
-    print("DETAILED DETECTION METRICS")
+    print(f"DETAILED DETECTION METRICS (Confidence Threshold: {conf_threshold:.3f})")
     print("="*60)
+    
+    overall_tp = 0
+    overall_fp = 0
+    overall_fn = 0
     
     for class_id, class_name in categories.items():
         tp = cm[class_id, class_id]
         fp = false_positives[class_id]
         fn = false_negatives[class_id]
+        
+        overall_tp += tp
+        overall_fp += fp
+        overall_fn += fn
         
         # Confusions with other classes
         confusions = []
@@ -219,19 +341,55 @@ def print_detailed_metrics(cm, false_positives, false_negatives, categories):
         print(f"  Recall:          {recall:.4f}")
         print(f"  F1-Score:        {f1:.4f}")
     
+    # Overall metrics
+    overall_precision = overall_tp / (overall_tp + overall_fp) if (overall_tp + overall_fp) > 0 else 0
+    overall_recall = overall_tp / (overall_tp + overall_fn) if (overall_tp + overall_fn) > 0 else 0
+    overall_f1 = 2 * (overall_precision * overall_recall) / (overall_precision + overall_recall) if (overall_precision + overall_recall) > 0 else 0
+    
+    print(f"\nOVERALL METRICS:")
+    print(f"  Total TP: {overall_tp}")
+    print(f"  Total FP: {overall_fp}")
+    print(f"  Total FN: {overall_fn}")
+    print(f"  Precision: {overall_precision:.4f}")
+    print(f"  Recall:    {overall_recall:.4f}")
+    print(f"  F1-Score:  {overall_f1:.4f}")
+    
     print("\n" + "="*60)
 
 def main():
     parser = argparse.ArgumentParser(description='Generate confusion matrix from COCO JSON files')
     parser.add_argument('--gt', required=True, help='Path to ground truth JSON file')
     parser.add_argument('--pred', required=True, help='Path to predictions JSON file')
-    parser.add_argument('--conf-threshold', type=float, default=0.5, 
-                        help='Confidence threshold for predictions (default: 0.5)')
+    
+    # Confidence threshold options
+    conf_group = parser.add_mutually_exclusive_group()
+    conf_group.add_argument('--conf-threshold', type=float, default=None,
+                           help='Fixed confidence threshold for predictions')
+    conf_group.add_argument('--auto-threshold', action='store_true',
+                           help='Automatically select threshold that maximizes F1')
+    
+    parser.add_argument('--n-thresholds', type=int, default=100,
+                       help='Number of thresholds to evaluate when using --auto-threshold (default: 50)')
+    parser.add_argument('--n-jobs', type=int, default=None,
+                       help='Number of CPUs to use for parallel processing (default: all available)')
+    
     parser.add_argument('--iou-threshold', type=float, default=0.5,
-                        help='IoU threshold for matching (default: 0.5)')
-    parser.add_argument('--output', type=str, default=None,
-                        help='Output path for confusion matrix plot')
+                       help='IoU threshold for matching (default: 0.5)')
+    parser.add_argument('--output-dir', type=str, default='.',
+                       help='Output directory for plots (default: current directory)')
+    parser.add_argument('--no-threshold-plot', action='store_true',
+                       help='Skip plotting F1 vs threshold when using --auto-threshold')
+    
     args = parser.parse_args()
+    
+    # Set default confidence threshold if not specified
+    if args.conf_threshold is None and not args.auto_threshold:
+        args.conf_threshold = 0.5
+        logger.info(f"Using default confidence threshold: {args.conf_threshold}")
+    
+    # Create output directory
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     
     # Load COCO JSON files
     logger.info(f"Loading ground truth from: {args.gt}")
@@ -242,17 +400,37 @@ def main():
     with open(args.pred, 'r') as f:
         pred_data = json.load(f)
     
-    # Generate confusion matrix
-    logger.info(f"Generating confusion matrix (conf_thr={args.conf_threshold}, iou_thr={args.iou_threshold})")
-    cm, fp, fn, categories = generate_confusion_matrix(
-        gt_data, pred_data, args.conf_threshold, args.iou_threshold
-    )
+    # Determine confidence threshold
+    if args.auto_threshold:
+        best_result, all_results = find_optimal_threshold(
+            gt_data, pred_data, args.iou_threshold, args.n_thresholds, args.n_jobs
+        )
+        
+        conf_threshold = best_result['threshold']
+        cm = best_result['cm']
+        fp = best_result['fp']
+        fn = best_result['fn']
+        categories = {cat['id']: cat['name'] for cat in gt_data['categories']}
+        
+        logger.info(f"Optimal confidence threshold: {conf_threshold:.3f} (F1: {best_result['overall_f1']:.4f})")
+        
+        # Plot F1 vs threshold unless disabled
+        if not args.no_threshold_plot:
+            plot_f1_vs_threshold(all_results, categories, conf_threshold, output_dir)
+    else:
+        # Use fixed threshold
+        conf_threshold = args.conf_threshold
+        logger.info(f"Using fixed confidence threshold: {conf_threshold}")
+        cm, fp, fn, categories = generate_confusion_matrix(
+            gt_data, pred_data, conf_threshold, args.iou_threshold
+        )
     
     # Print detailed metrics
-    print_detailed_metrics(cm, fp, fn, categories)
+    print_detailed_metrics(cm, fp, fn, categories, conf_threshold)
     
     # Plot confusion matrix
-    plot_confusion_matrix(cm, categories, fp, fn, args.output)
+    output_path = output_dir / f'confusion_matrix_conf{conf_threshold:.3f}.png'
+    plot_confusion_matrix(cm, categories, fp, fn, conf_threshold, output_path)
 
 if __name__ == "__main__":
     main()
