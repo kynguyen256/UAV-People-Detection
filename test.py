@@ -94,7 +94,7 @@ def match_predictions_to_gt(preds, gts, iou_thr=0.5):
     return matched, unmatched_preds, unmatched_gts
 
 def compute_metrics(preds, gts, conf_thresholds):
-    """Compute precision, recall, and mIoU for each confidence threshold for combined and per-class cases."""
+    """Compute precision, recall, mIoU, and F1 score for each confidence threshold for combined and per-class cases."""
     # Initialize metrics dictionary
     metrics = {'combined': {}, 'per_class': {}}
     classes = {0: 'human_ir', 1: 'human_rgb'}
@@ -103,6 +103,7 @@ def compute_metrics(preds, gts, conf_thresholds):
     precisions = []
     recalls = []
     mious = []
+    f1_scores = []
     
     for conf_thr in conf_thresholds:
         tp = 0
@@ -126,15 +127,18 @@ def compute_metrics(preds, gts, conf_thresholds):
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
         miou = iou_sum / num_matches if num_matches > 0 else 0.0
+        f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
         
         precisions.append(precision)
         recalls.append(recall)
         mious.append(miou)
+        f1_scores.append(f1)
     
     metrics['combined'] = {
         'precisions': precisions,
         'recalls': recalls,
-        'mious': mious
+        'mious': mious,
+        'f1_scores': f1_scores
     }
     
     # Compute per-class metrics
@@ -145,6 +149,7 @@ def compute_metrics(preds, gts, conf_thresholds):
         precisions = []
         recalls = []
         mious = []
+        f1_scores = []
         
         for conf_thr in conf_thresholds:
             tp = 0
@@ -168,21 +173,24 @@ def compute_metrics(preds, gts, conf_thresholds):
             precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
             recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
             miou = iou_sum / num_matches if num_matches > 0 else 0.0
+            f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
             
             precisions.append(precision)
             recalls.append(recall)
             mious.append(miou)
+            f1_scores.append(f1)
         
         metrics['per_class'][class_id] = {
             'precisions': precisions,
             'recalls': recalls,
-            'mious': mious
+            'mious': mious,
+            'f1_scores': f1_scores
         }
     
     return metrics
 
 def plot_metrics(conf_thresholds, metrics, output_dir):
-    """Generate and save combined plots for precision, recall, and mIoU for combined and per-class cases."""
+    """Generate and save combined plots for precision, recall, mIoU, and F1 score for combined and per-class cases."""
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -193,9 +201,10 @@ def plot_metrics(conf_thresholds, metrics, output_dir):
     plt.plot(conf_thresholds, metrics['combined']['precisions'], label='Precision', color='b', linewidth=2)
     plt.plot(conf_thresholds, metrics['combined']['recalls'], label='Recall', color='g', linewidth=2)
     plt.plot(conf_thresholds, metrics['combined']['mious'], label='mIoU', color='r', linewidth=2)
+    plt.plot(conf_thresholds, metrics['combined']['f1_scores'], label='F1 Score', color='c', linewidth=2)
     plt.xlabel('Confidence Threshold')
     plt.ylabel('Metric Value')
-    plt.title('Precision, Recall, and mIoU vs Confidence Threshold (Combined)')
+    plt.title('Precision, Recall, mIoU, and F1 Score vs Confidence Threshold (Combined)')
     plt.grid(True)
     plt.legend()
     plt.savefig(output_dir / 'metrics_vs_conf.png')
@@ -209,9 +218,10 @@ def plot_metrics(conf_thresholds, metrics, output_dir):
         plt.plot(conf_thresholds, class_metrics['precisions'], label='Precision', color='b', linewidth=2)
         plt.plot(conf_thresholds, class_metrics['recalls'], label='Recall', color='g', linewidth=2)
         plt.plot(conf_thresholds, class_metrics['mious'], label='mIoU', color='r', linewidth=2)
+        plt.plot(conf_thresholds, class_metrics['f1_scores'], label='F1 Score', color='c', linewidth=2)
         plt.xlabel('Confidence Threshold')
         plt.ylabel('Metric Value')
-        plt.title(f'Precision, Recall, and mIoU vs Confidence Threshold ({class_name})')
+        plt.title(f'Precision, Recall, mIoU, and F1 Score vs Confidence Threshold ({class_name})')
         plt.grid(True)
         plt.legend()
         plt.savefig(output_dir / f'metrics_vs_conf_{class_name}.png')
