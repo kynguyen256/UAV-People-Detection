@@ -177,22 +177,35 @@ def plot_per_class_confusion_matrices(results_per_class, categories, output_dir=
         tp = best_result['tp']
         fp = best_result['fp']
         fn = best_result['fn']
-        tn = "N/A"  # True negatives not applicable in object detection
         
         # Create a simple 2x2 visualization
         ax = axes[idx]
         
-        # Create custom confusion matrix visualization
-        data = [[tp, fp], [fn, tn]]
+        # Create custom confusion matrix visualization with numeric data
+        data = np.array([[tp, fp], [fn, np.nan]])  # Use NaN for TN
         labels = [[f"TP\n{tp}", f"FP\n{fp}"], [f"FN\n{fn}", "TN\n(N/A)"]]
         
         # Create heatmap with custom colormap
         mask = np.array([[False, False], [False, True]])  # Mask TN
         cmap = sns.color_palette("Blues", as_cmap=True)
         
-        sns.heatmap(data, annot=labels, fmt='', cmap=cmap, mask=mask,
+        # Plot heatmap with numeric data only
+        sns.heatmap(data, annot=False, cmap=cmap, mask=mask,
                    cbar=False, square=True, linewidths=2, linecolor='black',
-                   annot_kws={'size': 14}, ax=ax)
+                   vmin=0, vmax=max(tp, fp, fn) if max(tp, fp, fn) > 0 else 1,
+                   ax=ax)
+        
+        # Add custom text annotations
+        for i in range(2):
+            for j in range(2):
+                if not mask[i, j]:
+                    ax.text(j + 0.5, i + 0.5, labels[i][j],
+                           ha='center', va='center', fontsize=14,
+                           color='white' if data[i, j] > (max(tp, fp, fn) / 2) else 'black')
+                else:
+                    ax.text(j + 0.5, i + 0.5, labels[i][j],
+                           ha='center', va='center', fontsize=14,
+                           color='gray')
         
         ax.set_xlabel('Predicted', fontsize=12)
         ax.set_ylabel('Actual', fontsize=12)
