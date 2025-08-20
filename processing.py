@@ -1,4 +1,4 @@
-from src.processing import check_coco_data
+from src.cocoverifier import check_coco_data
 from src.download_RGB import download_RGB
 from src.visualize import randomDisplay
 from src.overlays import createOverlays, process_dataset
